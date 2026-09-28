@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "./theme-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useGeoWiseStore } from "@/stores/app-store";
@@ -9,6 +9,10 @@ import { useGeoWiseStore } from "@/stores/app-store";
 /** Applies `dir` and `lang` on <html> reactively from the global app store. */
 function DirectionManager({ children }: { children: React.ReactNode }) {
   const lang = useGeoWiseStore((s) => s.lang);
+
+  React.useEffect(() => {
+    useGeoWiseStore.persist.rehydrate();
+  }, []);
 
   React.useEffect(() => {
     const html = document.documentElement;

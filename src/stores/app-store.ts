@@ -107,6 +107,7 @@ export const useGeoWiseStore = create<GeoWiseState>()(
     {
       name: "geowise-mvp",
       partialize: (s) => ({ lang: s.lang, activeModule: s.activeModule }),
+      skipHydration: true,
     }
   )
 );

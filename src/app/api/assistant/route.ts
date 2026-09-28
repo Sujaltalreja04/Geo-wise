@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
 import { getStore } from "@/lib/data-store";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GeoWise bilingual AI assistant.
- *
- * The assistant is constrained (per FRD M12):
- *   - It may only reference data the calling user is authorized to see.
- *   - It explains methods and cites sources/dates.
- *   - It never executes arbitrary DB queries; it answers from a structured
- *     context snapshot built server-side.
- *   - It is decision-support only and must say so.
- */
+const MISTRAL_API_URL =
+  process.env.MISTRAL_API_URL || "https://api.mistral.ai/v1/chat/completions";
+
+const MISTRAL_API_KEY =
+  process.env.MISTRAL_API_KEY ||
+  "mstrl_n40CTDyIjJgOWw4qcEgeFOkLc3Ealkqm_2lyDoW";
+
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || "ministral-8b-latest";
+
 const SYSTEM_PROMPT = `You are "مساعد جيو وايز" / "GeoWise Assistant", a bilingual (Arabic/English) geospatial intelligence assistant for Saudi Arabian government analysts.
 
 You must follow these rules strictly:
@@ -89,11 +87,18 @@ function buildContextSnapshot(): string {
   return lines.join("\n");
 }
 
+export interface ChartSpec {
+  type: "bar" | "line" | "pie";
+  title: string;
+  data: { name: string; value: number }[];
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { messages, lang } = body as {
+  const { messages, lang, visualize } = body as {
     messages?: { role: string; content: string }[];
     lang?: "ar" | "en";
+    visualize?: boolean;
   };
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -104,46 +109,122 @@ export async function POST(req: Request) {
   }
 
   try {
-    const zai = await ZAI.create();
-    const system = SYSTEM_PROMPT.replace(
+    let system = SYSTEM_PROMPT.replace(
       "{{CONTEXT}}",
       buildContextSnapshot()
     );
 
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: system },
-        ...(lang === "ar"
-          ? [
-              {
-                role: "assistant",
-                content:
-                  "From now on, respond in Modern Standard Arabic unless the user explicitly writes in English.",
-              },
-            ]
-          : []),
-        ...messages.map((m) => ({
-          role: (m.role === "assistant" ? "assistant" : "user") as
-            | "user"
-            | "assistant",
-          content: m.content,
-        })),
-      ],
-      thinking: { type: "disabled" },
+    if (visualize) {
+      system += `\n\nCRITICAL VISUALIZATION REQUIREMENT: The user has requested a visualization.
+Along with your text summary, you MUST generate an interactive chart using real metrics from the platform context snapshot above.
+Format the chart block strictly as:
+\`\`\`chart
+{
+  "type": "bar",
+  "title": "Chart Title",
+  "data": [
+    {"name": "Category A", "value": 12},
+    {"name": "Category B", "value": 8}
+  ]
+}
+\`\`\`
+Valid "type" values are "bar", "line", or "pie". Ensure the JSON inside \`\`\`chart is valid.`;
+    }
+
+    const lastUserMessage =
+      [...messages].reverse().find((m) => m.role === "user")?.content || "";
+    const hasArabicChars = /[\u0600-\u06FF]/.test(lastUserMessage);
+    const isEnglishQuery =
+      (/[a-zA-Z]/.test(lastUserMessage) && !hasArabicChars) || lang === "en";
+
+    const languageInstruction = isEnglishQuery
+      ? "LANGUAGE REQUIREMENT: The user wrote in English. You MUST respond completely in English. Translate any Arabic terms or context values into clear English. End with: 'This is decision-support; verify before enforcement.'\nFORMATTING: Use clean, standard markdown. Do not litter text with redundant asterisks or stars."
+      : "LANGUAGE REQUIREMENT: The user wrote in Arabic. You MUST respond in Modern Standard Arabic. End with: 'هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ.'\nFORMATTING: Use clean, standard markdown. Do not litter text with redundant asterisks or stars.";
+
+    const chatMessages = [
+      { role: "system", content: `${system}\n\n${languageInstruction}` },
+      ...messages.map((m) => ({
+        role: (m.role === "assistant" ? "assistant" : "user") as
+          | "user"
+          | "assistant",
+        content: m.content,
+      })),
+    ];
+
+    const payload = {
+      model: MISTRAL_MODEL,
+      max_tokens: 1024,
+      temperature: 0.3,
+      messages: chatMessages,
+    };
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MISTRAL_API_KEY}`,
+      Accept: "application/json",
+    };
+
+    let reply = "";
+
+    const res = await fetch(MISTRAL_API_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
     });
 
-    const content = completion.choices?.[0]?.message?.content ?? "";
+    if (!res.ok) {
+      // Try fallback to open-mistral-7b if ministral had an issue
+      const fallbackRes = await fetch(MISTRAL_API_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...payload, model: "open-mistral-7b" }),
+      });
+      if (!fallbackRes.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Mistral API HTTP ${res.status}: ${errText}`);
+      }
+      const data = await fallbackRes.json();
+      reply = data.choices?.[0]?.message?.content ?? "";
+    } else {
+      const data = await res.json();
+      reply = data.choices?.[0]?.message?.content ?? "";
+    }
+
+    // Extract chart if present
+    const chart = extractChart(reply);
+
     return NextResponse.json({
-      reply: content,
-      sources: extractCitations(content),
+      reply,
+      chart,
+      sources: extractCitations(reply),
     });
   } catch (err) {
+    console.error("Assistant Error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
       { error: "Assistant unavailable", detail: message },
       { status: 502 }
     );
   }
+}
+
+function extractChart(text: string): ChartSpec | null {
+  const match = text.match(/```chart\s*([\s\S]*?)\s*```/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (parsed && parsed.data && Array.isArray(parsed.data)) {
+      return {
+        type: ["bar", "line", "pie"].includes(parsed.type) ? parsed.type : "bar",
+        title: parsed.title || "Data Analysis",
+        data: parsed.data.map((d: any) => ({
+          name: String(d.name || ""),
+          value: Number(d.value) || 0,
+        })),
+      };
+    }
+  } catch {}
+  return null;
 }
 
 /** Very small citation extractor: finds IDs we render as badges. */
