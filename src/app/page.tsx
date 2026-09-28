@@ -191,31 +191,11 @@ export default function Home() {
   );
 }
 
-/** Wrapper so the map workspace can fill the available height edge-to-edge. */
+/** Edge-to-edge full viewport workstation container for the map */
 function MapWorkspaceRoute() {
-  const t = useGeoWiseStore((s) => s.t);
   return (
-    // Definite viewport height so the SVG canvas has a fixed render area.
-    // (topbar ~4rem + footer ~3rem) — keeps the map offscreen-stable on desktop.
-    <div className="flex flex-col h-[calc(100dvh-7rem)] min-h-[520px]">
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="grid place-items-center size-9 rounded-lg bg-primary/10 ring-1 ring-primary/20 text-primary">
-            {/* avoid importing Map icon twice */}
-            <span className="text-base font-bold leading-none">⊥</span>
-          </div>
-          <div>
-            <div className="text-[0.7rem] text-muted-foreground font-mono">M04</div>
-            <h1 className="text-base font-semibold leading-tight">{t("map.title")}</h1>
-          </div>
-        </div>
-        <Badge variant="secondary" className="text-[0.65rem]">
-          {t("brand.name")} · {t("common.region")}: {t("brand.tagline")}
-        </Badge>
-      </div>
-      <div className="flex-1 min-h-0">
-        <MapWorkspace />
-      </div>
+    <div className="w-full h-full min-h-0 flex-1 relative overflow-hidden">
+      <MapWorkspace />
     </div>
   );
 }

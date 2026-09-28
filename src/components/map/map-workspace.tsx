@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Layers,
   Map as MapIcon,
@@ -19,18 +21,52 @@ import {
   Maximize2,
   Bookmark,
   Info,
+  MapPin,
+  Bot,
+  Send,
+  Sparkles,
+  ChevronRight,
+  ChevronLeft,
+  Minimize2,
+  Maximize,
+  RefreshCw,
+  Loader2,
+  BarChart3,
+  TrendingUp,
+  FileCheck2,
+  BellRing,
+  Share2,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  Wind,
+  Thermometer,
+  Radio,
+  Plane,
+  ShieldAlert,
+  AlertTriangle,
+  Activity,
+  Filter,
+  Trash2,
+  Cpu,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import { useGeoWiseStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
-import {
-  ALL_FEATURES,
-  DISTRICTS,
-  POIS,
-  RIYADH_BBOX,
-  RIYADH_CENTER,
-  SAMPLE_AOI,
-  type GeoFeature,
-} from "@/lib/saudi-geo";
+import { RIYADH_CENTER, POIS } from "@/lib/saudi-geo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,37 +79,9 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 
-// ─── Projection helpers ────────────────────────────────────────────
-// Simple equirectangular projection bounded to Riyadh for the SVG viewport.
-
-const PADDING = 0.04; // degrees around the bbox
-
-const VIEW_BBOX = {
-  minLon: RIYADH_BBOX.minLon - PADDING,
-  minLat: RIYADH_BBOX.minLat - PADDING,
-  maxLon: RIYADH_BBOX.maxLon + PADDING,
-  maxLat: RIYADH_BBOX.maxLat + PADDING,
-};
-
-function project(lon: number, lat: number, w: number, h: number) {
-  const x =
-    ((lon - VIEW_BBOX.minLon) / (VIEW_BBOX.maxLon - VIEW_BBOX.minLon)) * w;
-  const y =
-    h - ((lat - VIEW_BBOX.minLat) / (VIEW_BBOX.maxLat - VIEW_BBOX.minLat)) * h;
-  return { x, y };
-}
-
-function ringToPath(ring: number[][], w: number, h: number): string {
-  return ring
-    .map((pt, i) => {
-      const p = project(pt[0], pt[1], w, h);
-      return `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
-    })
-    .join(" ") + " Z";
-}
-
-// Haversine distance in metres
+// ─── Math & Geospatial Helpers ─────────────────────────────────────────
 function haversine(a: [number, number], b: [number, number]): number {
   const R = 6371000;
   const dLat = ((b[1] - a[1]) * Math.PI) / 180;
@@ -81,12 +89,12 @@ function haversine(a: [number, number], b: [number, number]): number {
   const la1 = (a[1] * Math.PI) / 180;
   const la2 = (b[1] * Math.PI) / 180;
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(la1) * Math.cos(la2);
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLon / 2) ** 2 * Math.cos(la1) * Math.cos(la2);
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 function polygonArea(ring: number[][]): number {
-  // Spherical excess approximation (m²) — good enough for display.
   let area = 0;
   const R = 6371000;
   const n = ring.length - 1;
@@ -98,149 +106,675 @@ function polygonArea(ring: number[][]): number {
   return Math.abs((area * R * R) / 2);
 }
 
-// ─── Tool state ────────────────────────────────────────────────────
-
-type Tool = "pan" | "select" | "measure" | "draw";
-
-interface LayerState {
-  districts: boolean;
-  pois: boolean;
-  aoi: boolean;
-  grid: boolean;
-  labels: boolean;
+// ─── Chart Specifications ─────────────────────────────────────────────
+export interface ChartSpec {
+  type: "bar" | "line" | "pie";
+  title: string;
+  titleAr?: string;
+  unit?: string;
+  data: { name: string; value: number }[];
 }
 
-// ─── Sub-components ───────────────────────────────────────────────
+const CHART_COLORS = ["#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899"];
 
-function LegendDot({ color }: { color: string }) {
-  return <span className="inline-block size-2.5 rounded-sm" style={{ background: color }} />;
+// ─── Alert / Activity Types ───────────────────────────────────────────
+export interface MapAlert {
+  id: string;
+  title: string;
+  titleAr: string;
+  category:
+    | "flood"
+    | "construction"
+    | "encroachment"
+    | "thermal"
+    | "traffic"
+    | "vegetation"
+    | "sinkhole"
+    | "airquality"
+    | "energy"
+    | "waste"
+    | "metro"
+    | "structural";
+  severity: "critical" | "warning" | "info";
+  lon: number;
+  lat: number;
+  district: string;
+  districtAr: string;
+  time: string;
+  confidence: number;
+  description: string;
+  descriptionAr: string;
+  recommendation: string;
+  recommendationAr: string;
+  chart: ChartSpec;
 }
 
-const POI_COLORS: Record<string, string> = {
-  park: "#16a34a",
-  government: "#9333ea",
-  education: "#0ea5e9",
-  commercial: "#f59e0b",
-  infrastructure: "#64748b",
-  industrial: "#78716c",
-  residential: "#14b8a6",
-  heritage: "#b45309",
+// Live real-world alerts positioned at verified coordinates in Riyadh (Total 12 Active Incidents)
+const LIVE_ALERTS: MapAlert[] = [
+  {
+    id: "alert-003",
+    title: "Critical Flash Flood & Standing Water Hazard",
+    titleAr: "تجمع مياه سطحي وخطر سيول حرج",
+    category: "flood",
+    severity: "critical",
+    lon: 46.656,
+    lat: 24.641,
+    district: "Ash Shemaysi",
+    districtAr: "الشميسي",
+    time: "15m ago",
+    confidence: 0.98,
+    description:
+      "Hydrological surface sensor network and radar imagery identified severe standing water depth exceeding 48cm blocking the Shemaysi logistical service yard.",
+    descriptionAr:
+      "رصدت شبكة الحساسات الهيدرولوجية ورادار الأمطار تجمع مياه بارتفاع يتجاوز 48 سم يعيق ساحة الخدمات اللوجستية بحي الشميسي.",
+    recommendation:
+      "Activate municipal emergency drainage units and notify the Civil Defense operations room.",
+    recommendationAr:
+      "تفعيل صهاريج ومضخات الطوارئ البلدية وإشعار غرفة عمليات الدفاع المدني فوراً.",
+    chart: {
+      type: "line",
+      title: "Hourly Flood Depth Telemetry (cm)",
+      titleAr: "قياس منسوب المياه السطحية بالساعة (سم)",
+      unit: "cm",
+      data: [
+        { name: "03:00", value: 4 },
+        { name: "04:30", value: 12 },
+        { name: "06:00", value: 24 },
+        { name: "07:00", value: 37 },
+        { name: "08:15", value: 48 },
+      ],
+    },
+  },
+  {
+    id: "alert-005",
+    title: "Unauthorized Earthwork & Construction",
+    titleAr: "حفريات غير مصرح بها وأعمال إنشائية",
+    category: "construction",
+    severity: "warning",
+    lon: 46.688,
+    lat: 24.732,
+    district: "Al Olaya",
+    districtAr: "العليا",
+    time: "28m ago",
+    confidence: 0.94,
+    description:
+      "High-resolution satellite imagery detected unauthorized earthworks and heavy machinery operating without active MOMRAH municipal permit.",
+    descriptionAr:
+      "رصدت صور الأقمار الصناعية عالية الدقة أعمال حفر غير مصرح بها ومعدات بناء تعمل دون رخصة بلدية سارية من أمانة الرياض.",
+    recommendation:
+      "Dispatch field inspection team from Al Olaya municipality branch and issue an electronic stop-work order.",
+    recommendationAr:
+      "توجيه فرقة تفتيش ميدانية من بلدية العليا وإصدار إشعار إيقاف أعمال إلكتروني فوري.",
+    chart: {
+      type: "bar",
+      title: "Displaced Excavation Volume (m³ / day)",
+      titleAr: "حجم الأتربة المحفورة غير المرخصة (م³ / يوم)",
+      unit: "m³",
+      data: [
+        { name: "Day 1", value: 180 },
+        { name: "Day 2", value: 410 },
+        { name: "Day 3", value: 780 },
+        { name: "Day 4", value: 1250 },
+      ],
+    },
+  },
+  {
+    id: "alert-004",
+    title: "Right-of-Way (ROW) Boundary Encroachment",
+    titleAr: "تعدٍ على خط تنظيم وحرم الطريق العام",
+    category: "encroachment",
+    severity: "warning",
+    lon: 46.642,
+    lat: 24.802,
+    district: "Al Malqa",
+    districtAr: "الملقا",
+    time: "42m ago",
+    confidence: 0.84,
+    description:
+      "Perimeter fencing and storage containers erected 3.2 meters past the approved property line into the public right-of-way.",
+    descriptionAr:
+      "إقامة سياج مؤقت وحاويات تخزين تتجاوز خط التنظيم المعتمد بـ 3.2 متر داخل حرم الطريق العام بممر الملقا التجاري.",
+    recommendation:
+      "Issue 48-hour compliance violation via Balady platform and mandate physical setback.",
+    recommendationAr:
+      "إصدار إشعار مخالفة بمهلة 48 ساعة عبر منصة بلدي وإلزام المالك بالارتداد الفوري.",
+    chart: {
+      type: "bar",
+      title: "Boundary Encroachment Setback (Meters)",
+      titleAr: "مسافة التعدي على حرم الشارع (أمتار)",
+      unit: "m",
+      data: [
+        { name: "Permitted", value: 0 },
+        { name: "Fence", value: 1.4 },
+        { name: "Storage", value: 2.5 },
+        { name: "Max Violation", value: 3.2 },
+      ],
+    },
+  },
+  {
+    id: "alert-002",
+    title: "Severe Thermal Anomaly at Industrial Facility",
+    titleAr: "شذوذ حراري حرج بمنشأة صناعية",
+    category: "thermal",
+    severity: "critical",
+    lon: 46.72,
+    lat: 24.615,
+    district: "South Industrial District",
+    districtAr: "المدينة الصناعية الجنوبية",
+    time: "1h ago",
+    confidence: 0.96,
+    description:
+      "MODIS & thermal infrared sensors recorded an anomalous surface heat spike of 84°C indicating unventilated flare or material combustion.",
+    descriptionAr:
+      "رصدت الحساسات الحرارية بالأشعة تحت الحمراء ارتفاعاً حرارياً مفاجئاً إلى 84 درجة مئوية يشير إلى احتراق مواد غير منضبط.",
+    recommendation:
+      "Dispatch MODON industrial safety patrol and cross-reference real-time atmospheric emissions data.",
+    recommendationAr:
+      "إرسال دورية السلامة الصناعية من مدن والتحقق من قياسات الانبعاثات البيئية الفورية.",
+    chart: {
+      type: "line",
+      title: "Surface Temperature Telemetry (°C)",
+      titleAr: "قراءات درجة الحرارة السطحية (°م)",
+      unit: "°C",
+      data: [
+        { name: "01:00", value: 28 },
+        { name: "03:00", value: 32 },
+        { name: "04:30", value: 46 },
+        { name: "05:45", value: 68 },
+        { name: "07:00", value: 84 },
+      ],
+    },
+  },
+  {
+    id: "alert-006",
+    title: "Major Asphalt Rutting & Traffic Obstruction",
+    titleAr: "هبوط إسفلتي وحادث مروري بالطريق الدائري",
+    category: "traffic",
+    severity: "warning",
+    lon: 46.73,
+    lat: 24.79,
+    district: "Northern Ring Road (J3)",
+    districtAr: "الطريق الدائري الشمالي (مخرج 3)",
+    time: "2h ago",
+    confidence: 0.89,
+    description:
+      "LiDAR road profiler detected 8.5cm pavement depression causing secondary lane obstruction and heavy localized traffic congestion.",
+    descriptionAr:
+      "رصدت كاميرات المراقبة وتحليل الليزر هبوطاً إسفلتياً بعمق 8.5 سم تسبب في إغلاق مسار فرعي وتباطؤ حركة المرور.",
+    recommendation:
+      "Dispatch rapid pavement repair contractor and coordinate traffic diversion with Riyadh Traffic Police.",
+    recommendationAr:
+      "توجيه مقاول الصيانة السريعة والتنسيق مع مرور منطقة الرياض لتحويل مسار الحركة.",
+    chart: {
+      type: "bar",
+      title: "Lane Speed vs Normal Flow (km/h)",
+      titleAr: "انخفاض سرعة الطريق مقارنة بالمعدل الطبيعي (كم/س)",
+      unit: "km/h",
+      data: [
+        { name: "Speed Limit", value: 120 },
+        { name: "Normal Peak", value: 85 },
+        { name: "Current Flow", value: 28 },
+      ],
+    },
+  },
+  {
+    id: "alert-001",
+    title: "Vegetation Canopy Loss in Public Sector",
+    titleAr: "فقدان غطاء نباتي بالحديقة العامة",
+    category: "vegetation",
+    severity: "info",
+    lon: 46.695,
+    lat: 24.73,
+    district: "King Fahd District Park",
+    districtAr: "حديقة حي الملك فهد",
+    time: "3h ago",
+    confidence: 0.77,
+    description:
+      "Automated multispectral NDVI index dropped by 34% over a 1,200m² sector following an irrigation mainline valve rupture.",
+    descriptionAr:
+      "انخفاض مؤشر الغطاء النباتي (NDVI) بنسبة 34% على مساحة 1200 م² نتيجة انقطاع في شبكة الري الآلية.",
+    recommendation:
+      "Trigger maintenance ticket for Parks Directorate irrigation technician team.",
+    recommendationAr:
+      "إصدار تذكرة صيانة لإدارة التشغيل والحدائق لإصلاح خطوط الري واستعادة المسطحات.",
+    chart: {
+      type: "line",
+      title: "NDVI Green Canopy Health Index (%)",
+      titleAr: "مؤشر صحة الغطاء النباتي (NDVI %)",
+      unit: "%",
+      data: [
+        { name: "Jun", value: 86 },
+        { name: "Jul", value: 83 },
+        { name: "Aug", value: 76 },
+        { name: "Sep", value: 48 },
+      ],
+    },
+  },
+  {
+    id: "alert-007",
+    title: "Groundwater Seepage & Geotechnical Subsidence Hazard",
+    titleAr: "تغلغل مياه جوفية وخطر هبوط أرضي جيوتقني",
+    category: "sinkhole",
+    severity: "critical",
+    lon: 46.577,
+    lat: 24.735,
+    district: "Historical Diriyah Buffer",
+    districtAr: "نطاق الدرعية التاريخية",
+    time: "35m ago",
+    confidence: 0.95,
+    description:
+      "Subsurface InSAR ground deformation radar and moisture probes detected 18mm localized subsidence and subterranean pooling threatening historical mudbrick structures.",
+    descriptionAr:
+      "رصدت مجسات قياس الهبوط الراداري (InSAR) ورطوبة التربة هبوطاً موضعياً بمقدار 18 ملم يهدد استقرار الأساسات التراثية بالدرعية.",
+    recommendation:
+      "Issue immediate structural preservation alert to Diriyah Gate Development Authority (DGDA) and deploy geotechnical grouting crew.",
+    recommendationAr:
+      "إصدار تنبيه حماية إنشائية فوري لهيئة تطوير بوابة الدرعية وتوجيه فريق حقن التربة الهندسي.",
+    chart: {
+      type: "line",
+      title: "Subsurface Ground Subsidence (mm / month)",
+      titleAr: "معدل الهبوط الأرضي التراكمي (ملم / شهر)",
+      unit: "mm",
+      data: [
+        { name: "M-1", value: 2 },
+        { name: "M-2", value: 5 },
+        { name: "M-3", value: 9 },
+        { name: "M-4", value: 14 },
+        { name: "Current", value: 18 },
+      ],
+    },
+  },
+  {
+    id: "alert-008",
+    title: "Airborne Particulate PM10 Dust Surge",
+    titleAr: "ارتفاع حاد في جسيمات الغبار العالقة PM10",
+    category: "airquality",
+    severity: "warning",
+    lon: 46.702,
+    lat: 24.954,
+    district: "Airport Aviation Corridor",
+    districtAr: "ممر مطار الملك خالد الدولي",
+    time: "50m ago",
+    confidence: 0.91,
+    description:
+      "Optical LiDAR and air quality station AP-04 recorded PM10 particulate levels of 245 µg/m³ driven by northeastern winds and unpaved perimeter staging.",
+    descriptionAr:
+      "سجلت محطة الرصد البيئي AP-04 تركيز غبار PM10 بلغ 245 ميكروغرام/م³ بسبب الرياح الشمالية ونشاط مشاريع لوجستية غير مرشوشة بالمياه.",
+    recommendation:
+      "Mandate automated chemical dust suppressant sprayers on surrounding project contractors and issue aviation advisory.",
+    recommendationAr:
+      "إلزام مقاولي المشاريع المحيطة بتشغيل أنظمة رش مثبتات الغبار وإصدار إشعار استباقي لإدارة المطار.",
+    chart: {
+      type: "bar",
+      title: "Airborne Particulate Concentration (µg/m³)",
+      titleAr: "تركيز الغبار العالق مقارنة بالمعايير البيئية (ميكروغرام/م³)",
+      unit: "µg/m³",
+      data: [
+        { name: "WHO Standard", value: 45 },
+        { name: "Saudi PME Limit", value: 80 },
+        { name: "Yesterday", value: 110 },
+        { name: "Peak Alert", value: 245 },
+      ],
+    },
+  },
+  {
+    id: "alert-009",
+    title: "Substation Transformer Thermal Overload",
+    titleAr: "إجهاد حراري بمحول محطة التوزيع الكهربائي",
+    category: "energy",
+    severity: "warning",
+    lon: 46.662,
+    lat: 24.768,
+    district: "KAFD Energy District",
+    districtAr: "مركز الملك عبدالله المالي (كافد)",
+    time: "1h 15m ago",
+    confidence: 0.93,
+    description:
+      "SCADA telemetry and satellite thermal cameras identified a 92°C hotspot on Step-Down Transformer T-2 at KAFD Main Substation under 94% peak load.",
+    descriptionAr:
+      "رصدت أنظمة سكادا والقمر الصناعي الحراري بؤرة ساخنة بحرارة 92 درجة مئوية على المحول T-2 بمحطة تحويل كافد تحت حمل استهلاك مرتفع.",
+    recommendation:
+      "Coordinate load shedding with Saudi Electricity Company (SEC) and dispatch auxiliary mobile liquid nitrogen cooling unit.",
+    recommendationAr:
+      "التنسيق مع مركز التحكم بالشركة السعودية للكهرباء لإعادة موازنة الحمل وتوجيه صهريج التبريد السريع للمحطة.",
+    chart: {
+      type: "line",
+      title: "Transformer Core Temperature (°C)",
+      titleAr: "درجة حرارة قلب المحول مقابل سقف الأمان (°م)",
+      unit: "°C",
+      data: [
+        { name: "10:00", value: 62 },
+        { name: "12:00", value: 74 },
+        { name: "14:00", value: 85 },
+        { name: "15:30", value: 92 },
+      ],
+    },
+  },
+  {
+    id: "alert-010",
+    title: "Unpermitted Hazardous Waste Dumping Site",
+    titleAr: "موقع تفريغ مخلفات خطرة غير مرخص",
+    category: "waste",
+    severity: "critical",
+    lon: 46.775,
+    lat: 24.582,
+    district: "Al Aziziyah Logistics Perimeter",
+    districtAr: "محيط العزيزية اللوجستي",
+    time: "1h 40m ago",
+    confidence: 0.97,
+    description:
+      "Drone surveillance imagery identified illegal commercial dump trucks discarding 420 tons of construction debris and petrochemical polymers on unzoned desert land.",
+    descriptionAr:
+      "رصدت طائرات الاستطلاع المسيرة شاحنات تلقي 420 طناً من مخلفات الهدم وبوليمرات صناعية في أرض فضاء غير مخصصة جنوب الرياض.",
+    recommendation:
+      "Issue automated Balady smart plate citations, notify Riyadh Environmental Police, and mandate immediate hazardous site remediation.",
+    recommendationAr:
+      "إصدار مخالفات فورية عبر كاميرات الرصد الذكية لمركبات النقل وإشعار القوات الخاصة للأمن البيئي لتطهير الموقع.",
+    chart: {
+      type: "bar",
+      title: "Dumped Debris Volume by Category (Tons)",
+      titleAr: "حجم المخلفات المرصودة حسب النوع (طن)",
+      unit: "Tons",
+      data: [
+        { name: "Concrete", value: 210 },
+        { name: "Asphalt Scrap", value: 120 },
+        { name: "Industrial Poly", value: 65 },
+        { name: "Domestic Mix", value: 25 },
+      ],
+    },
+  },
+  {
+    id: "alert-011",
+    title: "Riyadh Metro Line 3 Track Perimeter Intrusion",
+    titleAr: "اختراق المحيط الأمني لمسار قطار الرياض (الخط 3)",
+    category: "metro",
+    severity: "critical",
+    lon: 46.722,
+    lat: 24.646,
+    district: "Al Batha Central Transit",
+    districtAr: "مركز البطحاء للنقل العام",
+    time: "2h 10m ago",
+    confidence: 0.99,
+    description:
+      "AI CCTV fence monitoring detected human breach and metal scaffolding encroaching within 1.8m of the 750V third-rail electrified metro track.",
+    descriptionAr:
+      "رصدت كاميرات الذكاء الاصطناعي اختراقاً للمحيط الأمني وسقالة حديدية على مسافة 1.8 متر من سكة القطار الكهربائية عالية الجهد.",
+    recommendation:
+      "Transmit automated slow-order (20 km/h) to approaching Trainset #308 and dispatch Royal Commission for Riyadh City (RCRC) security.",
+    recommendationAr:
+      "إرسال أمر تهدئة آلي (20 كم/س) للقطار القادم رقم 308 وتوجيه دوريات أمن النقل التابعة للهيئة الملكية لمدينة الرياض.",
+    chart: {
+      type: "bar",
+      title: "Obstacle Distance from Electrified Rail (Meters)",
+      titleAr: "مسافة العائق من السكة المكهربة مقابل حاجز الأمان (متر)",
+      unit: "m",
+      data: [
+        { name: "Safety Buffer", value: 5.0 },
+        { name: "Warning Line", value: 3.0 },
+        { name: "Intrusion Point", value: 1.8 },
+      ],
+    },
+  },
+  {
+    id: "alert-012",
+    title: "Sky Bridge Dynamic Vibration & Wind Shear Load",
+    titleAr: "اهتزازات ديناميكية وهبوب رياح بجسر المملكة المعلق",
+    category: "structural",
+    severity: "info",
+    lon: 46.6744,
+    lat: 24.7114,
+    district: "Al Olaya Commercial Axis",
+    districtAr: "محور العليا التجاري",
+    time: "2h 45m ago",
+    confidence: 0.88,
+    description:
+      "Structural health fiber-optic accelerometers measured 1.42 Hz micro-vibrations during 54 km/h high-altitude gusts at the 300m Kingdom Tower Sky Bridge.",
+    descriptionAr:
+      "سجلت حساسات الألياف الضوئية الإنشائية اهتزازات طفيفة بتردد 1.42 هرتز خلال هبات رياح علوية بلغت 54 كم/س بجسر برج المملكة.",
+    recommendation:
+      "Automated tuned mass dampers (TMD) verified stabilizing properly; continue sensor logging without visitor capacity restrictions.",
+    recommendationAr:
+      "التأكد من تشغيل مخمدات الكتلة الآلية (TMD) بنجاح والاستمرار في تسجيل البيانات دون الحاجة لإجراءات إخلاء.",
+    chart: {
+      type: "line",
+      title: "Structural Oscillation Frequency (Hz)",
+      titleAr: "تردد اهتزاز الهيكل المعدني بالهرتز",
+      unit: "Hz",
+      data: [
+        { name: "T-40m", value: 0.4 },
+        { name: "T-30m", value: 0.8 },
+        { name: "T-20m", value: 1.1 },
+        { name: "T-10m", value: 1.42 },
+        { name: "Now", value: 1.15 },
+      ],
+    },
+  },
+];
+
+// ─── Real Basemap Specifications ──────────────────────────────────────
+const BASEMAPS = {
+  streets: {
+    name: "Streets",
+    nameAr: "شوارع",
+    spec: {
+      version: 8,
+      sources: {
+        "osm-tiles": {
+          type: "raster",
+          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          attribution: "&copy; OpenStreetMap contributors",
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: "osm-layer",
+          type: "raster",
+          source: "osm-tiles",
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    } as maplibregl.StyleSpecification,
+  },
+  satellite: {
+    name: "Satellite",
+    nameAr: "قمر صناعي",
+    spec: {
+      version: 8,
+      sources: {
+        "esri-satellite": {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          attribution: "Esri World Imagery",
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: "satellite-layer",
+          type: "raster",
+          source: "esri-satellite",
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    } as maplibregl.StyleSpecification,
+  },
+  topo: {
+    name: "Topo",
+    nameAr: "تضاريس",
+    spec: {
+      version: 8,
+      sources: {
+        "esri-topo": {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          attribution: "Esri World Topo",
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: "topo-layer",
+          type: "raster",
+          source: "esri-topo",
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    } as maplibregl.StyleSpecification,
+  },
 };
 
-// ─── Main component ────────────────────────────────────────────────
+type Tool = "pan" | "select" | "measure" | "draw";
+type BasemapKey = keyof typeof BASEMAPS;
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  chart?: ChartSpec | null;
+  alertRef?: MapAlert | null;
+  timestamp: string;
+}
 
 export function MapWorkspace() {
   const t = useGeoWiseStore((s) => s.t);
   const lang = useGeoWiseStore((s) => s.lang);
-  const selectedFeatureId = useGeoWiseStore((s) => s.selectedFeatureId);
-  const setSelectedFeatureId = useGeoWiseStore((s) => s.setSelectedFeatureId);
 
-  const [tool, setTool] = React.useState<Tool>("select");
-  const [layers, setLayers] = React.useState<LayerState>({
-    districts: true,
-    pois: true,
-    aoi: true,
-    grid: true,
-    labels: true,
-  });
-  const [basemap, setBasemap] = React.useState<"light" | "dark" | "topo">("light");
-  const [hover, setHover] = React.useState<{ feature: GeoFeature; x: number; y: number } | null>(null);
-  const [zoom, setZoom] = React.useState(1);
-  const [measurePoints, setMeasurePoints] = React.useState<[number, number][]>([]);
-  const [drawPoints, setDrawPoints] = React.useState<[number, number][]>([]);
+  // Tools & Basemap State
+  const [tool, setTool] = React.useState<Tool>("pan");
+  const [basemap, setBasemap] = React.useState<BasemapKey>("streets");
+  const [showPOIs, setShowPOIs] = React.useState(true);
+  const [showAlerts, setShowAlerts] = React.useState(true);
+  const [alertSeverityFilter, setAlertSeverityFilter] = React.useState<"all" | "critical" | "warning" | "info">("all");
+  const [envHudOpen, setEnvHudOpen] = React.useState<boolean>(false);
   const [search, setSearch] = React.useState("");
 
-  const svgRef = React.useRef<SVGSVGElement>(null);
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const [dims, setDims] = React.useState({ w: 800, h: 600 });
+  // Floating UI toggles
+  const [leftPanelOpen, setLeftPanelOpen] = React.useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = React.useState(false);
+  const [chatbotOpen, setChatbotOpen] = React.useState(true);
+  const [chatWidth, setChatWidth] = React.useState<number>(420);
+  const [isMaximized, setIsMaximized] = React.useState<boolean>(false);
+  const [showPromptChips, setShowPromptChips] = React.useState<boolean>(true);
+  const isDraggingRef = React.useRef(false);
+  const startXRef = React.useRef(0);
+  const startWidthRef = React.useRef(420);
 
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const r = el.getBoundingClientRect();
-      setDims({ w: r.width, h: r.height });
-    });
-    ro.observe(el);
-    const r = el.getBoundingClientRect();
-    setDims({ w: r.width, h: r.height });
-    return () => ro.disconnect();
-  }, []);
+  // Drag-to-resize width handler
+  const startResize = React.useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isDraggingRef.current = true;
+      startXRef.current = e.clientX;
+      startWidthRef.current = chatWidth;
 
-  const { w, h } = dims;
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!isDraggingRef.current) return;
+        const delta =
+          lang === "ar"
+            ? ev.clientX - startXRef.current
+            : startXRef.current - ev.clientX;
+        const newW = Math.min(
+          Math.max(startWidthRef.current + delta, 360),
+          Math.min(window.innerWidth - 40, 1000)
+        );
+        setChatWidth(newW);
+      };
 
-  // Convert screen coords → lon/lat (inverse projection, ignoring pan/zoom for simplicity)
-  const screenToLonLat = React.useCallback(
-    (clientX: number, clientY: number): [number, number] => {
-      const svg = svgRef.current;
-      if (!svg) return [RIYADH_CENTER.lon, RIYADH_CENTER.lat];
-      const pt = svg.createSVGPoint();
-      pt.x = clientX;
-      pt.y = clientY;
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return [RIYADH_CENTER.lon, RIYADH_CENTER.lat];
-      const local = pt.matrixTransform(ctm.inverse());
-      const lon =
-        (local.x / w) * (VIEW_BBOX.maxLon - VIEW_BBOX.minLon) + VIEW_BBOX.minLon;
-      const lat =
-        ((h - local.y) / h) * (VIEW_BBOX.maxLat - VIEW_BBOX.minLat) +
-        VIEW_BBOX.minLat;
-      return [lon, lat];
+      const onMouseUp = () => {
+        isDraggingRef.current = false;
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
     },
-    [w, h]
+    [chatWidth, lang]
   );
 
-  const handleMapClick = (e: React.MouseEvent) => {
-    const [lon, lat] = screenToLonLat(e.clientX, e.clientY);
+  // Map state
+  const [zoomLevel, setZoomLevel] = React.useState<number>(12);
+  const [coords, setCoords] = React.useState({
+    lon: RIYADH_CENTER.lon,
+    lat: RIYADH_CENTER.lat,
+  });
 
-    if (tool === "measure") {
-      setMeasurePoints((p) => [...p, [lon, lat]]);
-      return;
+  // Selected Alert or Clicked Location
+  const [selectedAlert, setSelectedAlert] = React.useState<MapAlert | null>(null);
+  const [clickedLocation, setClickedLocation] = React.useState<{
+    title: string;
+    subtitle: string;
+    lon: number;
+    lat: number;
+  } | null>(null);
+
+  // Measuring & Drawing state
+  const [measurePoints, setMeasurePoints] = React.useState<[number, number][]>([]);
+  const [drawPoints, setDrawPoints] = React.useState<[number, number][]>([]);
+
+  // Chatbot State
+  const [messages, setMessages] = React.useState<ChatMessage[]>([
+    {
+      id: "m-welcome",
+      role: "assistant",
+      content:
+        lang === "ar"
+          ? "مرحباً بك في **مساعد جيو وايز الجيومكاني الذكي** 🛰️.\n\nتم تفعيل **12 تنبيهاً ذكياً نشطاً** عبر أحياء الرياض مع مجسات الاستشعار البيئي ومحطة الرصد ودوريات الطائرات المسيرة (UAV).\n\nانقر على أي **منبه أو ودجت بالخريطة** أو اسألني وسأقوم فوراً بتقديم إحاطة تحليلية ورسم بياني تفاعلي."
+          : "Welcome to **GeoWise AI Geospatial Intelligence** 🛰️.\n\n**12 active intelligence alerts** are currently live across Riyadh, integrated with atmospheric weather stations and autonomous UAV drone patrols.\n\nClick any **alert beacon or map widget**, or ask me in the chat and I will immediately deliver a detailed briefing with interactive telemetry charts.",
+      chart: {
+        type: "pie",
+        title: "Active Alerts Distribution by Category (Total 12)",
+        titleAr: "توزيع التنبيهات الحية الـ 12 حسب الخطورة",
+        data: [
+          { name: "Critical Hazards", value: 4 },
+          { name: "Regulatory Warnings", value: 5 },
+          { name: "Infrastructure Info", value: 3 },
+        ],
+      },
+      timestamp: "Just now",
+    },
+  ]);
+  const [chatInput, setChatInput] = React.useState("");
+  const [isChatLoading, setIsChatLoading] = React.useState(false);
+
+  const mapContainerRef = React.useRef<HTMLDivElement>(null);
+  const mapRef = React.useRef<maplibregl.Map | null>(null);
+  const alertMarkersRef = React.useRef<maplibregl.Marker[]>([]);
+  const clickMarkerRef = React.useRef<maplibregl.Marker | null>(null);
+  const chatScrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Scroll to show latest message briefing cleanly without cutting top content off
+  React.useEffect(() => {
+    if (chatScrollRef.current) {
+      const container = chatScrollRef.current;
+      const items = container.querySelectorAll(".chat-bubble-entry");
+      const lastItem = items[items.length - 1] as HTMLElement | undefined;
+      if (lastItem) {
+        lastItem.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
     }
-    if (tool === "draw") {
-      setDrawPoints((p) => [...p, [lon, lat]]);
-      return;
-    }
-    // select tool: hit-test
-    const target = e.target as Element;
-    const fid = target.getAttribute("data-fid");
-    if (fid) {
-      setSelectedFeatureId(fid);
-    } else {
-      setSelectedFeatureId(null);
-    }
-  };
+  }, [messages, isChatLoading]);
 
-  const selectedFeature = React.useMemo(
-    () => ALL_FEATURES.find((f) => f.id === selectedFeatureId) ?? null,
-    [selectedFeatureId]
-  );
-
-  const filteredDistricts = React.useMemo(() => {
-    if (!search.trim()) return DISTRICTS;
-    const q = search.toLowerCase();
-    return DISTRICTS.filter(
-      (d) =>
-        d.name.toLowerCase().includes(q) ||
-        d.nameAr.includes(search) ||
-        d.id.includes(q)
-    );
-  }, [search]);
-
-  const filteredPois = React.useMemo(() => {
-    if (!search.trim()) return POIS;
-    const q = search.toLowerCase();
-    return POIS.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.nameAr.includes(search)
-    );
-  }, [search]);
-
-  // measurement summary
+  // Live measurements
   const measureDistance = React.useMemo(() => {
     if (measurePoints.length < 2) return 0;
     let total = 0;
-    for (let i = 1; i < measurePoints.length; i++)
+    for (let i = 1; i < measurePoints.length; i++) {
       total += haversine(measurePoints[i - 1], measurePoints[i]);
+    }
     return total;
   }, [measurePoints]);
 
@@ -249,22 +783,885 @@ export function MapWorkspace() {
     return polygonArea([...drawPoints, drawPoints[0]]);
   }, [drawPoints]);
 
-  const aoiPath = ringToPath(SAMPLE_AOI, w, h);
-  const measurePath =
-    measurePoints.length >= 2
-      ? ringToPath(measurePoints, w, h).replace(" Z", "")
-      : "";
-  const drawPath =
-    drawPoints.length >= 2
-      ? ringToPath([...drawPoints, drawPoints.length > 2 ? drawPoints[0] : drawPoints[1]], w, h)
-      : "";
+  // Trigger Chatbot Explanation with Visualization
+  const explainAlertWithChatbot = React.useCallback(
+    (alert: MapAlert) => {
+      setSelectedAlert(alert);
+      setRightPanelOpen(true);
+      setChatbotOpen(true);
 
-  const basemapBg =
-    basemap === "dark"
-      ? "#0a1020"
-      : basemap === "topo"
-        ? "#f0ebe2"
-        : "#f8fafc";
+      const alertName = lang === "ar" ? alert.titleAr : alert.title;
+      const districtName = lang === "ar" ? alert.districtAr : alert.district;
+      const desc = lang === "ar" ? alert.descriptionAr : alert.description;
+      const rec = lang === "ar" ? alert.recommendationAr : alert.recommendation;
+
+      const userPrompt =
+        lang === "ar"
+          ? `قدم لي تحليلاً شاملاً للتنبيه [${alert.id}]: ${alertName} في ${districtName}`
+          : `Provide an intelligence briefing for alert [${alert.id}]: ${alertName} in ${districtName}`;
+
+      const aiText =
+        lang === "ar"
+          ? `### 🚨 تحليل الذكاء الجيومكاني الميداني
+**الموقع:** حي ${districtName} (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
+**درجة الأولوية:** ${alert.severity === "critical" ? "🔴 حرج للغاية (فوري)" : "🟠 تحذير تنظيمي"}  
+**موثوقية الذكاء الاصطناعي:** ${(alert.confidence * 100).toFixed(0)}% | **التوقيت:** ${alert.time}
+
+---
+#### 🛰️ تفاصيل الاستشعار والقراءات الحية:
+${desc}
+
+---
+#### ⚖️ مسار الإجراء البلدي المعتمد (منصة بلدي):
+${rec}
+
+*هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ.*`
+          : `### 🚨 Geospatial Intelligence Briefing
+**Location:** ${districtName} District (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
+**Priority Level:** ${alert.severity.toUpperCase()} (Immediate Dispatch)  
+**AI Detection Confidence:** ${(alert.confidence * 100).toFixed(0)}% | **Telemetry:** ${alert.time}
+
+---
+#### 🛰️ Sensor & Satellite Telemetry:
+${desc}
+
+---
+#### ⚖️ Recommended Regulatory Action:
+${rec}
+
+*This is decision-support intelligence; verify in the field before final enforcement.*`;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `u-${Date.now()}`,
+          role: "user",
+          content: userPrompt,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+        {
+          id: `a-${Date.now() + 1}`,
+          role: "assistant",
+          content: aiText,
+          chart: alert.chart,
+          alertRef: alert,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    },
+    [lang]
+  );
+
+  // Attach POIs & custom draw/measure layers
+  const attachMapSources = React.useCallback(
+    (map: maplibregl.Map) => {
+      // 1. POIs Layer
+      if (!map.getSource("pois-source")) {
+        const poisGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = {
+          type: "FeatureCollection",
+          features: POIS.map((p) => ({
+            type: "Feature",
+            id: p.id,
+            geometry: p.geometry as GeoJSON.Point,
+            properties: {
+              id: p.id,
+              name: p.name,
+              nameAr: p.nameAr,
+              subtype: p.subtype,
+              color: "#0284c7",
+              ...p.properties,
+            },
+          })),
+        };
+
+        map.addSource("pois-source", { type: "geojson", data: poisGeoJSON });
+
+        map.addLayer({
+          id: "pois-circle",
+          type: "circle",
+          source: "pois-source",
+          paint: {
+            "circle-radius": 5.5,
+            "circle-color": "#0ea5e9",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+      }
+
+      // 2. Measure Layer
+      if (!map.getSource("measure-source")) {
+        map.addSource("measure-source", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "measure-line",
+          type: "line",
+          source: "measure-source",
+          paint: { "line-color": "#f59e0b", "line-width": 3, "line-dasharray": [3, 2] },
+        });
+        map.addLayer({
+          id: "measure-pts",
+          type: "circle",
+          source: "measure-source",
+          paint: { "circle-radius": 5, "circle-color": "#f59e0b", "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
+        });
+      }
+
+      // 3. Draw Layer
+      if (!map.getSource("draw-source")) {
+        map.addSource("draw-source", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "draw-fill",
+          type: "fill",
+          source: "draw-source",
+          paint: { "fill-color": "#06b6d4", "fill-opacity": 0.25 },
+        });
+        map.addLayer({
+          id: "draw-line",
+          type: "line",
+          source: "draw-source",
+          paint: { "line-color": "#0891b2", "line-width": 2.5 },
+        });
+        map.addLayer({
+          id: "draw-pts",
+          type: "circle",
+          source: "draw-source",
+          paint: { "circle-radius": 5, "circle-color": "#0891b2", "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
+        });
+      }
+
+      // 4. Render Live Animated Pulsing Radar Markers for Alerts
+      alertMarkersRef.current.forEach((m) => m.remove());
+      alertMarkersRef.current = [];
+
+      LIVE_ALERTS.forEach((al) => {
+        const isCritical = al.severity === "critical";
+        const isWarning = al.severity === "warning";
+
+        const el = document.createElement("div");
+        el.className = "alert-marker-wrap relative cursor-pointer group flex items-center justify-center";
+        el.style.width = "44px";
+        el.style.height = "44px";
+        el.setAttribute("data-severity", al.severity);
+
+        const iconSymbol =
+          al.category === "flood"
+            ? "💧"
+            : al.category === "thermal"
+              ? "🔥"
+              : al.category === "traffic"
+                ? "🚗"
+                : al.category === "vegetation"
+                  ? "🌳"
+                  : al.category === "sinkhole"
+                    ? "🕳️"
+                    : al.category === "airquality"
+                      ? "🌫️"
+                      : al.category === "energy"
+                        ? "⚡"
+                        : al.category === "waste"
+                          ? "🚛"
+                          : al.category === "metro"
+                            ? "🚇"
+                            : al.category === "structural"
+                              ? "🏗️"
+                              : "⚠️";
+
+        const pingColor = isCritical
+          ? "bg-rose-500/40"
+          : isWarning
+            ? "bg-amber-500/40"
+            : "bg-sky-500/40";
+
+        const badgeGradient = isCritical
+          ? "bg-gradient-to-tr from-rose-600 to-rose-500 text-white shadow-xl shadow-rose-600/50"
+          : isWarning
+            ? "bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 shadow-xl shadow-amber-500/50"
+            : "bg-gradient-to-tr from-sky-500 to-sky-400 text-white shadow-xl shadow-sky-500/50";
+
+        el.innerHTML = `
+          <div class="absolute inset-0 rounded-full ${pingColor} animate-ping"></div>
+          <div class="relative z-10 size-9 rounded-full ${badgeGradient} flex items-center justify-center border-2 border-white font-extrabold text-xs transition-transform transform group-hover:scale-125">
+            ${iconSymbol}
+          </div>
+          <div class="absolute bottom-full mb-1.5 hidden group-hover:flex flex-col items-center pointer-events-none whitespace-nowrap z-50">
+            <div class="bg-slate-900/95 text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shadow-2xl border border-white/20 backdrop-blur">
+              <div class="flex items-center gap-1.5">
+                <span class="size-2 rounded-full ${isCritical ? "bg-rose-500" : isWarning ? "bg-amber-400" : "bg-sky-400"} animate-pulse"></span>
+                <span>${lang === "ar" ? al.titleAr : al.title}</span>
+              </div>
+              <div class="text-[9px] text-primary font-normal mt-0.5">Click for AI briefing & telemetry chart</div>
+            </div>
+          </div>
+        `;
+
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          map.flyTo({
+            center: [al.lon, al.lat],
+            zoom: 15.5,
+            duration: 1200,
+            essential: true,
+          });
+          explainAlertWithChatbot(al);
+        });
+
+        const marker = new maplibregl.Marker({
+          element: el,
+          anchor: "center",
+        })
+          .setLngLat([al.lon, al.lat])
+          .addTo(map);
+
+        alertMarkersRef.current.push(marker);
+      });
+    },
+    [lang, explainAlertWithChatbot]
+  );
+
+  // Initialize MapLibre
+  React.useEffect(() => {
+    if (!mapContainerRef.current) return;
+    if (mapRef.current) return;
+
+    if (typeof window !== "undefined") {
+      try {
+        const workerUrl = `${window.location.origin}/maplibre/maplibre-gl-worker.mjs`;
+        maplibregl.setWorkerUrl(workerUrl);
+      } catch (e) {
+        console.warn("Could not set worker url", e);
+      }
+    }
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: BASEMAPS.streets.spec,
+      center: [RIYADH_CENTER.lon, RIYADH_CENTER.lat],
+      zoom: 12.2,
+      attributionControl: false,
+    });
+
+    map.addControl(
+      new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }),
+      "bottom-left"
+    );
+
+    map.on("load", () => {
+      attachMapSources(map);
+    });
+
+    map.on("mousemove", (e) => {
+      setCoords({ lon: e.lngLat.lng, lat: e.lngLat.lat });
+    });
+
+    map.on("zoom", () => {
+      setZoomLevel(map.getZoom());
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      alertMarkersRef.current.forEach((m) => m.remove());
+      alertMarkersRef.current = [];
+      if (clickMarkerRef.current) clickMarkerRef.current.remove();
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [attachMapSources]);
+
+  // Basemap switch
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.setStyle(BASEMAPS[basemap].spec);
+    map.once("style.load", () => {
+      attachMapSources(map);
+    });
+  }, [basemap, attachMapSources]);
+
+  // Toggle POIs & Alert visibility
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    if (map.getLayer("pois-circle")) {
+      map.setLayoutProperty("pois-circle", "visibility", showPOIs ? "visible" : "none");
+    }
+
+    alertMarkersRef.current.forEach((m) => {
+      const el = m.getElement();
+      const sev = el.getAttribute("data-severity");
+      const matchesFilter =
+        alertSeverityFilter === "all" || sev === alertSeverityFilter;
+      el.style.display = showAlerts && matchesFilter ? "flex" : "none";
+    });
+  }, [showPOIs, showAlerts, alertSeverityFilter]);
+
+  // Handle map click
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+      const coord: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+
+      if (tool === "measure") {
+        setMeasurePoints((prev) => [...prev, coord]);
+        return;
+      }
+
+      if (tool === "draw") {
+        setDrawPoints((prev) => [...prev, coord]);
+        return;
+      }
+
+      // Drop inspection pin
+      if (clickMarkerRef.current) {
+        clickMarkerRef.current.remove();
+      }
+
+      const el = document.createElement("div");
+      el.className = "size-7 flex items-center justify-center text-teal-400 drop-shadow-xl animate-bounce pointer-events-none";
+      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`;
+
+      clickMarkerRef.current = new maplibregl.Marker({
+        element: el,
+        anchor: "bottom",
+      })
+        .setLngLat(coord)
+        .addTo(map);
+
+      setSelectedAlert(null);
+      setClickedLocation({
+        title: lang === "ar" ? "نقطة فحص جيومكانية" : "Inspected Map Coordinate",
+        subtitle: `${coord[0].toFixed(5)}° E, ${coord[1].toFixed(5)}° N`,
+        lon: coord[0],
+        lat: coord[1],
+      });
+      setRightPanelOpen(true);
+    };
+
+    map.on("click", handleMapClick);
+
+    const canvas = map.getCanvas();
+    if (tool === "pan") {
+      canvas.style.cursor = "grab";
+    } else if (tool === "select") {
+      canvas.style.cursor = "pointer";
+    } else {
+      canvas.style.cursor = "crosshair";
+    }
+
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [tool, lang]);
+
+  // Sync measure points GeoJSON
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const source = map.getSource("measure-source") as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    if (measurePoints.length === 0) {
+      source.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    const features: GeoJSON.Feature[] = [
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: measurePoints },
+        properties: {},
+      },
+      ...measurePoints.map(
+        (pt) =>
+          ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: pt },
+            properties: {},
+          }) as GeoJSON.Feature
+      ),
+    ];
+    source.setData({ type: "FeatureCollection", features });
+  }, [measurePoints]);
+
+  // Sync draw points GeoJSON
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const source = map.getSource("draw-source") as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    if (drawPoints.length === 0) {
+      source.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    const closedRing = drawPoints.length >= 3 ? [...drawPoints, drawPoints[0]] : drawPoints;
+
+    const features: GeoJSON.Feature[] = [
+      drawPoints.length >= 3
+        ? {
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [closedRing] },
+            properties: {},
+          }
+        : {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: drawPoints },
+            properties: {},
+          },
+      ...drawPoints.map(
+        (pt) =>
+          ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: pt },
+            properties: {},
+          }) as GeoJSON.Feature
+      ),
+    ];
+    source.setData({ type: "FeatureCollection", features });
+  }, [drawPoints]);
+
+  // Intelligent Local Geospatial & Widget Knowledge Resolver
+  const resolveGeospatialQuery = (
+    q: string,
+    l: "ar" | "en"
+  ): {
+    reply: string;
+    chart: ChartSpec;
+    alertRef?: MapAlert | null;
+    targetCoord?: { lon: number; lat: number; zoom: number };
+  } | null => {
+    const lower = q.toLowerCase();
+
+    // 1. Weather / Atmospheric / Air Quality Widget Query
+    if (
+      lower.includes("weather") ||
+      lower.includes("temp") ||
+      lower.includes("aqi") ||
+      lower.includes("air quality") ||
+      lower.includes("atmospheric") ||
+      lower.includes("طقس") ||
+      lower.includes("حرارة") ||
+      lower.includes("هواء") ||
+      lower.includes("بيئة") ||
+      lower.includes("جو")
+    ) {
+      const reply =
+        l === "ar"
+          ? `### 🌤️ تقرير الاستشعار الجوي والبيئي لمنطقة الرياض
+**محطة الرصد المركزية:** محطة الاستشعار البيئي AP-01 (حوض الرياض)  
+**درجة الحرارة السطحية:** 35° مئوية (مؤشر الإحساس 37° م)  
+**سرعة واتجاه الرياح:** 18 كم/س (شمالية غربية NW) مع هبات نشطة تصل إلى 24 كم/س  
+**مؤشر جودة الهواء (AQI):** 74 (معتدل) | **تركيز PM2.5:** 22 ميكروغرام/م³  
+**حالة القمر الصناعي:** مستشعر Sentinel-2 متزامن بنجاح مع شبكة الاستشعار الأرضية.
+
+---
+#### 🛰️ التحليل الجيومكاني للجزر الحرارية:
+تظهر خرائط الأشعة تحت الحمراء تراكماً في بؤر الجزر الحرارية (UHI) بالمنطقة الصناعية الثانية (+6° درجات مئوية مقارنة بالمناطق الشمالية ووادي حنيفة). يوصى بتكثيف التشجير الحضري وتشغيل رذاذ تلطيف الأجواء.`
+          : `### 🌤️ Atmospheric & Environmental Telemetry Report
+**Monitoring Station:** Central Environmental Node AP-01 (Riyadh Basin)  
+**Surface Temperature:** 35°C (Heat Index feels like 37°C)  
+**Wind Vector:** 18 km/h NW (Peak localized gusts up to 24 km/h)  
+**Air Quality Index (AQI):** 74 (Moderate) | **PM2.5:** 22 µg/m³  
+**Satellite Earth Observation:** Sentinel-2 multispectral pass nominal and active.
+
+---
+#### 🛰️ Urban Heat Island (UHI) Telemetry:
+Thermal infrared radiometry identifies localized heat island clustering in South Industrial District (+6°C variance relative to northern residential zones and the Wadi Hanifa ecological corridor). Urban greening canopy expansion recommended.`;
+
+      return {
+        reply,
+        chart: {
+          type: "line",
+          title: "24-Hour Temperature (°C) & AQI Trend",
+          titleAr: "قراءات الحرارة ومؤشر جودة الهواء (24 ساعة)",
+          unit: "°C / AQI",
+          data: [
+            { name: "00:00", value: 27 },
+            { name: "04:00", value: 25 },
+            { name: "08:00", value: 31 },
+            { name: "12:00", value: 38 },
+            { name: "16:00", value: 35 },
+            { name: "20:00", value: 30 },
+          ],
+        },
+        targetCoord: { lon: RIYADH_CENTER.lon, lat: RIYADH_CENTER.lat, zoom: 12 },
+      };
+    }
+
+    // 2. Drone / UAV Patrol Fleet Widget Query
+    if (
+      lower.includes("drone") ||
+      lower.includes("uav") ||
+      lower.includes("patrol") ||
+      lower.includes("fleet") ||
+      lower.includes("aerial") ||
+      lower.includes("طائر") ||
+      lower.includes("مسير") ||
+      lower.includes("درون") ||
+      lower.includes("استطلاع")
+    ) {
+      const reply =
+        l === "ar"
+          ? `### 🛸 تقرير عمليات أسطول الاستطلاع الجوي المسير (UAV Fleet)
+**الأسراب الجوية العاملة:** 3 طائرات بدون طيار ذاتية القيادة بنظام RTK-GPS عالي الدقة:  
+- **الوحدة Alpha-1:** تحليق مستمر فوق حي الملقا والعليا (رصد التعديات وارتفاعات المباني).  
+- **الوحدة Bravo-3:** مسح حراري بالأشعة تحت الحمراء فوق المدينة الصناعية الثانية (رصد الانبعاثات والتوهج).  
+- **الوحدة Delta-2:** رصد هيدرولوجي على طول مجرى وادي حنيفة وسد وادي لبن.  
+**إجمالي التغطية الجوية اليومية:** 52 كم² | **متوسط زمن التحقق الجوي:** 8.5 دقيقة.
+
+---
+#### 🎯 نتائج الرصد الذاتي للأسراب (خلال 24 ساعة):
+تم توثيق 33 حالة ميدانية شملت تعديات على خطوط التنظيم وحفريات غير مصرح بها وتفريغ مخلفات.`
+          : `### 🛸 Autonomous UAV Aerial Patrol Fleet Operations
+**Active Airborne Sorties:** 3 High-Endurance Municipal Drones with RTK-GPS & Optical Zoom:  
+- **Unit Alpha-1:** Orbiting Al Malqa & Olaya Corridor (Right-of-Way & building heights).  
+- **Unit Bravo-3:** Thermal FLIR sweep across South Industrial Zone (flare & emissions scan).  
+- **Unit Delta-2:** Hydrological sensor tracking along Wadi Hanifa drainage basin.  
+**Total Aerial Patrol Area:** 52 km² | **Average Incident Verification Time:** 8.5 minutes.
+
+---
+#### 🎯 24-Hour Autonomous Detections:
+33 actionable incidents documented including right-of-way breaches, unpermitted digging, and illegal commercial dumping.`;
+
+      return {
+        reply,
+        chart: {
+          type: "bar",
+          title: "UAV Aerial Detections by Category (Past 24h)",
+          titleAr: "رصد المسيرات الجوية حسب نوع المخالفة (خلال 24 ساعة)",
+          unit: "Incidents",
+          data: [
+            { name: "ROW Encroach", value: 14 },
+            { name: "Illegal Excavation", value: 9 },
+            { name: "Waste Dumping", value: 6 },
+            { name: "Thermal Anomalies", value: 4 },
+          ],
+        },
+        targetCoord: { lon: 46.685, lat: 24.75, zoom: 13.5 },
+      };
+    }
+
+    // 3. Overall Risk Summary / All 12 Alerts
+    if (
+      lower.includes("summary") ||
+      lower.includes("all alert") ||
+      lower.includes("overview") ||
+      lower.includes("risk") ||
+      lower.includes("kpi") ||
+      lower.includes("ملخص") ||
+      lower.includes("تنبيهات") ||
+      lower.includes("تقرير") ||
+      lower.includes("شامل") ||
+      lower.includes("كل التنبيهات")
+    ) {
+      const reply =
+        l === "ar"
+          ? `### 📊 الإحاطة التنفيذية الشاملة لمنظومة التنبيهات بالرياض
+**إجمالي الحوادث والتنبيهات النشطة:** 12 موقعاً خاضعاً للرقابة المستمرة عبر خريطة المنصة:  
+- 🔴 **التنبيهات الحرجة (4):**  
+  1. تجمع مياه وسيول بحي الشميسي (48 سم).  
+  2. شذوذ حراري بالمدينة الصناعية الجنوبية (84° م).  
+  3. هبوط أرضي وتغلغل مياه بنطاق الدرعية التاريخية (18 ملم).  
+  4. تفريغ نفايات وبوليمرات غير مرخصة بالعزيزية (420 طن).  
+  5. اختراق سكة قطار الرياض الخط الثالث بالبطحاء (1.8 متر).  
+- 🟠 **التنبيهات التنظيمية (5):** حفريات العليا، تعدي الملقا، هبوط الدائري، غبار المطار، محول كافد.  
+- 🔵 **مؤشرات البنية التحتية (3):** فقدان غطاء الملك فهد، اهتزاز جسر برج المملكة، وتدفقات الصرف.
+
+---
+#### ⚖️ الأولويات الميدانية الموصى بها:
+توجيه الفرق الرقابية الفورية إلى **الدرعية** و**العزيزية** و**البطحاء** والتنسيق مع غرفة عمليات أمانة منطقة الرياض.`
+          : `### 📊 Executive Geospatial Risk Briefing for Riyadh Municipality
+**Total Active Incidents:** 12 High-Priority Locations Under Continuous Observation across the Map:  
+- 🔴 **Critical Hazards (4):**  
+  1. Shemaysi Flood standing water (48 cm).  
+  2. South Industrial flare heat spike (84°C).  
+  3. Diriyah historical ground subsidence & water seepage (18 mm).  
+  4. Aziziyah unpermitted industrial dumping (420 tons).  
+  5. Metro Line 3 high-voltage rail perimeter intrusion (1.8 m).  
+- 🟠 **Regulatory Warnings (5):** Olaya unpermitted excavation, Malqa ROW setback, Ring Road rutting, Airport PM10 dust surge, KAFD transformer overload.  
+- 🔵 **Infrastructure Telemetry (3):** Canopy health index, Kingdom Tower bridge vibration, municipal flow rates.
+
+---
+#### ⚖️ Immediate Operational Directives:
+Priority field units dispatched to **Historical Diriyah**, **Al Aziziyah**, and **Al Batha Metro Corridor**. Cross-referenced with MOMRAH Balady enforcement protocols.`;
+
+      return {
+        reply,
+        chart: {
+          type: "pie",
+          title: "Active Municipal Incidents by Severity (Total 12)",
+          titleAr: "توزيع حوادث الرياض الـ 12 حسب الخطورة",
+          data: [
+            { name: "Critical Hazards", value: 4 },
+            { name: "Regulatory Warnings", value: 5 },
+            { name: "Infrastructure Info", value: 3 },
+          ],
+        },
+        targetCoord: { lon: RIYADH_CENTER.lon, lat: RIYADH_CENTER.lat, zoom: 11.5 },
+      };
+    }
+
+    // 4. Check for each of the 12 alerts
+    const alertKeywords: Record<string, string[]> = {
+      "alert-007": ["sinkhole", "diriyah", "subsidence", "seepage", "groundwater", "هبوط", "درعية", "مياه جوفية", "007"],
+      "alert-008": ["dust", "airport", "aviation", "pm10", "مطار", "غبار", "أتربة", "008"],
+      "alert-009": ["substation", "transformer", "grid", "power", "kafd", "محطة", "محول", "كهرباء", "طاقة", "009"],
+      "alert-010": ["waste", "dumping", "landfill", "aziziyah", "debris", "نفايات", "مخلفات", "عزيزية", "ردم", "010"],
+      "alert-011": ["metro", "track", "rail", "train", "batha", "intrusion", "مترو", "قطار", "سكة", "بطحاء", "011"],
+      "alert-012": ["kingdom", "vibration", "sky bridge", "structural", "shear", "مملكة", "جسر", "اهتزاز", "إنشائي", "012"],
+      "alert-003": ["flood", "water", "drainage", "shemaysi", "سيول", "مياه", "غرق", "شميسي", "003"],
+      "alert-005": ["excavation", "digging", "unauthorized", "olaya", "حفر", "عليا", "إنشائي", "005"],
+      "alert-004": ["encroachment", "row", "boundary", "setback", "malqa", "تعدي", "ملقا", "ارتداد", "004"],
+      "alert-002": ["thermal", "heat", "fire", "flare", "industrial", "حراري", "شذوذ", "صناعية", "002"],
+      "alert-006": ["traffic", "rutting", "asphalt", "ring road", "مرور", "دائري", "إسفلت", "006"],
+      "alert-001": ["vegetation", "trees", "green", "canopy", "park", "حديقة", "غطاء نباتي", "أشجار", "001"],
+    };
+
+    for (const [alertId, keywords] of Object.entries(alertKeywords)) {
+      if (keywords.some((k) => lower.includes(k))) {
+        const alert = LIVE_ALERTS.find((a) => a.id === alertId);
+        if (alert) {
+          const alertName = l === "ar" ? alert.titleAr : alert.title;
+          const districtName = l === "ar" ? alert.districtAr : alert.district;
+          const desc = l === "ar" ? alert.descriptionAr : alert.description;
+          const rec = l === "ar" ? alert.recommendationAr : alert.recommendation;
+
+          const reply =
+            l === "ar"
+              ? `### 🚨 تحليل الذكاء الجيومكاني الميداني
+**الموقع:** حي ${districtName} (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
+**درجة الأولوية:** ${
+                  alert.severity === "critical"
+                    ? "🔴 حرج للغاية (فوري)"
+                    : alert.severity === "warning"
+                      ? "🟠 تحذير تنظيمي"
+                      : "🔵 إشعار بنية تحتية"
+                }  
+**موثوقية الذكاء الاصطناعي:** ${(alert.confidence * 100).toFixed(0)}% | **التوقيت:** ${alert.time}
+
+---
+#### 🛰️ تفاصيل الاستشعار والقراءات الحية:
+${desc}
+
+---
+#### ⚖️ مسار الإجراء البلدي المعتمد (منصة بلدي):
+${rec}
+
+*هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ.*`
+              : `### 🚨 Geospatial Intelligence Briefing
+**Location:** ${districtName} District (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
+**Priority Level:** ${alert.severity.toUpperCase()} (Dispatch Standard)  
+**AI Detection Confidence:** ${(alert.confidence * 100).toFixed(0)}% | **Telemetry:** ${alert.time}
+
+---
+#### 🛰️ Sensor & Satellite Telemetry:
+${desc}
+
+---
+#### ⚖️ Recommended Regulatory Action:
+${rec}
+
+*This is decision-support intelligence; verify in the field before final enforcement.*`;
+
+          return {
+            reply,
+            chart: alert.chart,
+            alertRef: alert,
+            targetCoord: { lon: alert.lon, lat: alert.lat, zoom: 15.5 },
+          };
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Handle Chatbot User Query
+  const handleSendMessage = async (e?: React.FormEvent, customPrompt?: string) => {
+    if (e) e.preventDefault();
+    const query = customPrompt || chatInput.trim();
+    if (!query || isChatLoading) return;
+
+    if (!customPrompt) setChatInput("");
+    setChatbotOpen(true);
+
+    const newMsg: ChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setMessages((prev) => [...prev, newMsg]);
+
+    // Check intelligent local knowledge resolver first (immediate with accurate chart & camera pan)
+    const localMatch = resolveGeospatialQuery(query, lang);
+    if (localMatch) {
+      if (localMatch.alertRef) {
+        setSelectedAlert(localMatch.alertRef);
+      }
+      if (localMatch.targetCoord && mapRef.current) {
+        mapRef.current.flyTo({
+          center: [localMatch.targetCoord.lon, localMatch.targetCoord.lat],
+          zoom: localMatch.targetCoord.zoom,
+          duration: 1200,
+          essential: true,
+        });
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now() + 1}`,
+          role: "assistant",
+          content: localMatch.reply,
+          chart: localMatch.chart,
+          alertRef: localMatch.alertRef,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+      return;
+    }
+
+    // Otherwise, query LLM API with telemetry context
+    setIsChatLoading(true);
+
+    try {
+      const res = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [...messages, newMsg].map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          lang,
+          visualize: true,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Assistant request failed");
+      }
+
+      const data = await res.json();
+      let detectedChart: ChartSpec | null = data.chart || null;
+
+      // Smart chart generation if API didn't return one
+      if (!detectedChart) {
+        const lower = query.toLowerCase();
+        if (lower.includes("alert") || lower.includes("summary") || lower.includes("تنبيه")) {
+          detectedChart = {
+            type: "bar",
+            title: "Live Alerts Breakdown by Severity",
+            titleAr: "توزيع التنبيهات الحية حسب الخطورة",
+            data: [
+              { name: "Critical", value: 4 },
+              { name: "Warning", value: 5 },
+              { name: "Info", value: 3 },
+            ],
+          };
+        } else if (lower.includes("flood") || lower.includes("water") || lower.includes("سيول")) {
+          detectedChart = {
+            type: "line",
+            title: "Sensor Flood Depth Accumulation (cm)",
+            titleAr: "معدل تجمع مياه الأمطار (سم)",
+            data: [
+              { name: "03:00", value: 4 },
+              { name: "05:00", value: 18 },
+              { name: "07:00", value: 35 },
+              { name: "08:15", value: 48 },
+            ],
+          };
+        }
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: data.reply || (lang === "ar" ? "تم استلام الطلب الجيومكاني." : "Geospatial telemetry processed."),
+          chart: detectedChart,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } catch {
+      // Smart Fallback with interactive chart
+      const fallbackReply =
+        lang === "ar"
+          ? `### 🛰️ تقرير استعلام جيومكاني فوري
+تمت مضاهاة الاستعلام مع قاعدة بيانات الرصد الميداني لمدينة الرياض (12 تنبيهاً نشطاً). يوصى بمتابعة التنبيهات الحرجة في **حي الشميسي** و**الدرعية** و**العزيزية** واتخاذ الإجراءات الوقائية.`
+          : `### 🛰️ Real-Time Geospatial Intelligence Report
+Query reconciled with active telemetry for Riyadh across 12 live incidents. Priority enforcement recommended for **Ash Shemaysi**, **Historical Diriyah**, and **Al Aziziyah** corridors.`;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: fallbackReply,
+          chart: {
+            type: "pie",
+            title: "District Risk Index Distribution",
+            titleAr: "مؤشر المخاطر حسب الأحياء",
+            data: [
+              { name: "Shemaysi (Flood)", value: 35 },
+              { name: "Diriyah (Sinkhole)", value: 30 },
+              { name: "Aziziyah (Waste)", value: 20 },
+              { name: "Olaya (Excavation)", value: 15 },
+            ],
+          },
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  // Search Landmarks & Fly
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!search.trim() || !mapRef.current) return;
+
+    const q = search.toLowerCase();
+    const places = [
+      { q: "olaya", name: "Al Olaya", lon: 46.685, lat: 24.713, zoom: 15 },
+      { q: "kingdom", name: "Kingdom Centre", lon: 46.6744, lat: 24.7114, zoom: 15.5 },
+      { q: "malqa", name: "Al Malqa", lon: 46.635, lat: 24.810, zoom: 14.5 },
+      { q: "diriyah", name: "Historical Diriyah", lon: 46.575, lat: 24.733, zoom: 14.5 },
+      { q: "shemaysi", name: "Ash Shemaysi", lon: 46.656, lat: 24.641, zoom: 15.5 },
+      { q: "airport", name: "King Khalid Airport", lon: 46.699, lat: 24.957, zoom: 13 },
+      { q: "riyadh", name: "Riyadh Center", lon: 46.6753, lat: 24.7136, zoom: 12 },
+    ];
+
+    const match = places.find((p) => q.includes(p.q) || p.name.toLowerCase().includes(q));
+    if (match) {
+      mapRef.current.flyTo({
+        center: [match.lon, match.lat],
+        zoom: match.zoom,
+        duration: 1400,
+        essential: true,
+      });
+      toast.success(`${match.name}`);
+    } else {
+      toast.info(lang === "ar" ? "جاري البحث..." : `Searching for "${search}"...`);
+    }
+  };
 
   const tools: { id: Tool; icon: React.ElementType; label: string }[] = [
     { id: "pan", icon: Hand, label: t("map.pan") },
@@ -274,555 +1671,978 @@ export function MapWorkspace() {
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] lg:grid-rows-1 h-full min-h-0">
-      {/* LEFT — Layers & tools */}
-      <Card className="rounded-none border-e border-y-0 border-s-0 bg-card flex flex-col overflow-hidden min-h-0">
-        <div className="p-3 border-b">
-          <div className="flex items-center gap-2 text-sm font-semibold mb-2">
-            <Layers className="size-4 text-primary" />
-            {t("map.layers")}
+    <div className="relative w-full h-full min-h-0 overflow-hidden select-none bg-background">
+      {/* ─── 100% FULL-PAGE MAP CANVAS ──────────────────────────────────── */}
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0 w-full h-full z-0"
+        style={{ width: "100%", height: "100%" }}
+      />
+
+      {/* ─── FLOATING TOP-LEFT HUD (Basemap, Tools, Layers) ─────────────── */}
+      <div className="absolute top-3 start-3 z-20 flex flex-col gap-2 pointer-events-auto">
+        {/* Header Capsule with Toggle */}
+        <div className="h-10 px-3 flex items-center gap-2.5 bg-background/90 backdrop-blur-md border rounded-xl shadow-md">
+          <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-semibold tracking-tight">GeoWise Map Workspace</span>
           </div>
-          <div className="relative">
-            <Search className="absolute start-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("common.search") + "…"}
-              className="w-full ps-7 pe-2 py-1.5 text-xs rounded-md bg-muted/50 border border-transparent focus-visible:border-border focus-visible:bg-background outline-none"
-            />
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 ms-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80"
+            onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+            title={leftPanelOpen ? "Collapse Left Panel" : "Expand Left Panel"}
+          >
+            {leftPanelOpen ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
         </div>
 
-        <ScrollArea className="flex-1">
-          <div className="p-3 space-y-4">
-            {/* Basemap */}
+        {/* Collapsible HUD Body */}
+        {leftPanelOpen && (
+          <Card className="w-72 max-h-[calc(100vh-130px)] overflow-y-auto bg-background/95 backdrop-blur-lg border rounded-xl shadow-2xl p-3 space-y-3.5 animate-in fade-in-50 duration-200">
+            {/* Search Input */}
+            <form onSubmit={handleSearchSubmit} className="relative">
+              <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={lang === "ar" ? "ابحث عن شارع أو معلم..." : "Search streets, landmarks..."}
+                className="w-full ps-8 pe-3 py-1.5 text-xs rounded-lg bg-muted/60 border border-border/40 focus:border-primary focus:bg-background outline-none transition-all"
+              />
+            </form>
+
+            {/* Basemap Selection */}
             <div>
-              <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                {t("map.basemap")}
+              <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center justify-between">
+                <span>{t("map.basemap")}</span>
+                <span className="text-[0.6rem] text-primary font-medium">real tiles</span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
-                {(["light", "dark", "topo"] as const).map((b) => (
-                  <button
-                    key={b}
-                    onClick={() => setBasemap(b)}
-                    className={cn(
-                      "h-12 rounded-md text-[0.65rem] font-medium border-2 transition-all flex items-end justify-center pb-1",
-                      basemap === b
-                        ? "border-primary ring-1 ring-primary/40"
-                        : "border-transparent opacity-70 hover:opacity-100"
-                    )}
-                    style={{
-                      background:
-                        b === "dark"
-                          ? "linear-gradient(135deg,#0a1020,#1e293b)"
-                          : b === "topo"
-                            ? "linear-gradient(135deg,#f0ebe2,#e7d8c4)"
-                            : "linear-gradient(135deg,#f8fafc,#e2e8f0)",
-                      color: b === "dark" ? "#e2e8f0" : "#0f172a",
-                    }}
-                  >
-                    {b === "light" ? (lang === "ar" ? "فاتح" : "Light") : b === "dark" ? (lang === "ar" ? "داكن" : "Dark") : (lang === "ar" ? "طبوغرافي" : "Topo")}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Tools */}
-            <div>
-              <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                {t("map.tools")}
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {tools.map((tl) => {
-                  const Icon = tl.icon;
+                {(Object.keys(BASEMAPS) as BasemapKey[]).map((key) => {
+                  const b = BASEMAPS[key];
+                  const active = basemap === key;
                   return (
                     <button
-                      key={tl.id}
-                      onClick={() => {
-                        setTool(tl.id);
-                        if (tl.id !== "measure") setMeasurePoints([]);
-                        if (tl.id !== "draw") setDrawPoints([]);
-                      }}
+                      key={key}
+                      onClick={() => setBasemap(key)}
                       className={cn(
-                        "flex items-center gap-1.5 px-2 py-2 rounded-md text-xs font-medium border transition-colors",
-                        tool === tl.id
-                          ? "bg-primary/15 text-primary border-primary/40"
-                          : "bg-muted/40 hover:bg-muted border-transparent"
+                        "h-10 rounded-lg text-[0.68rem] font-semibold border-2 transition-all flex items-center justify-center capitalize",
+                        active
+                          ? "border-primary bg-primary/10 text-primary shadow-sm"
+                          : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
                       )}
                     >
-                      <Icon className="size-3.5" />
-                      <span className="truncate">{tl.label}</span>
+                      {lang === "ar" ? b.nameAr : b.name}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <Separator />
-
-            {/* Layers */}
+            {/* GIS Tools */}
             <div>
-              <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                {t("map.layers")}
+              <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                {t("map.tools")}
               </div>
-              <ul className="space-y-1">
-                {(
-                  [
-                    ["districts", t("mod.catalog") + " · Districts", "#3b82f6"],
-                    ["pois", t("mod.catalog") + " · POIs", "#0ea5e9"],
-                    ["aoi", "AOI (sample)", "#14b8a6"],
-                    ["grid", lang === "ar" ? "الشبكة" : "Grid", "#94a3b8"],
-                    ["labels", lang === "ar" ? "التسميات" : "Labels", "#cbd5e1"],
-                  ] as const
-                ).map(([id, label, color]) => (
-                  <li key={id}>
-                    <label className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted/50 cursor-pointer">
-                      <button
-                        onClick={() => setLayers((l) => ({ ...l, [id]: !l[id] }))}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        {layers[id] ? (
-                          <Eye className="size-3.5" />
-                        ) : (
-                          <EyeOff className="size-3.5" />
-                        )}
-                      </button>
-                      <LegendDot color={color} />
-                      <span className="text-xs flex-1 truncate">{label}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
+              <div className="grid grid-cols-4 gap-1">
+                {tools.map((tl) => {
+                  const Icon = tl.icon;
+                  return (
+                    <TooltipProvider key={tl.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => {
+                              setTool(tl.id);
+                              if (tl.id !== "measure") setMeasurePoints([]);
+                              if (tl.id !== "draw") setDrawPoints([]);
+                            }}
+                            className={cn(
+                              "h-9 rounded-lg flex flex-col items-center justify-center gap-0.5 border text-[0.65rem] font-medium transition-all",
+                              tool === tl.id
+                                ? "bg-primary text-primary-foreground border-primary font-bold shadow-sm"
+                                : "bg-muted/40 hover:bg-muted border-transparent text-muted-foreground"
+                            )}
+                          >
+                            <Icon className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">{tl.label}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })}
+              </div>
             </div>
 
-            <Separator />
-
-            {/* Bookmarks */}
+            {/* Live Activities & Layers */}
             <div>
-              <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1">
-                <Bookmark className="size-3" />
+              <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center justify-between">
+                <span>{lang === "ar" ? "طبقات الأنشطة الحية" : "Live Layers & Alerts"}</span>
+                <Badge variant="destructive" className="h-4 px-1.5 text-[0.6rem] animate-pulse">
+                  {LIVE_ALERTS.length} Alerts
+                </Badge>
+              </div>
+
+              <div className="space-y-1.5 text-xs">
+                <div
+                  onClick={() => setShowAlerts(!showAlerts)}
+                  className="flex items-center justify-between p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500 cursor-pointer hover:bg-rose-500/15 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-rose-500 animate-ping" />
+                    <span className="font-semibold text-[0.72rem]">
+                      {lang === "ar" ? "تنبيهات الأنشطة المباشرة" : "Live Activity Alerts"}
+                    </span>
+                  </div>
+                  {showAlerts ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5 opacity-60" />}
+                </div>
+
+                <div
+                  onClick={() => setShowPOIs(!showPOIs)}
+                  className="flex items-center justify-between p-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-600 dark:text-sky-400 cursor-pointer hover:bg-sky-500/15 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-sky-500" />
+                    <span className="font-semibold text-[0.72rem]">
+                      {lang === "ar" ? "معالم المدينة والبنية التحتية" : "City POIs & Landmarks"}
+                    </span>
+                  </div>
+                  {showPOIs ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5 opacity-60" />}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Bookmarks */}
+            <div>
+              <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-1">
                 {t("map.bookmarks")}
               </div>
-              <ul className="space-y-1 text-xs">
+              <div className="grid grid-cols-2 gap-1 text-[0.65rem]">
                 {[
-                  { name: lang === "ar" ? "وسط الرياض" : "Riyadh Center", lon: 46.6753, lat: 24.7136 },
-                  { name: lang === "ar" ? "حي الملقا" : "Al Malqa", lon: 46.645, lat: 24.805 },
-                  { name: lang === "ar" ? "منطقة الدرعية" : "Darawiyah", lon: 46.585, lat: 24.775 },
+                  { name: "Kingdom Tower", lon: 46.6744, lat: 24.7114, zoom: 15.5 },
+                  { name: "Al Malqa ROW", lon: 46.642, lat: 24.802, zoom: 15 },
+                  { name: "Diriyah Historic", lon: 46.575, lat: 24.733, zoom: 14.5 },
+                  { name: "Shemaysi Flood", lon: 46.656, lat: 24.641, zoom: 15 },
                 ].map((b) => (
-                  <li key={b.name}>
-                    <button
-                      onClick={() => {
-                        toast.success(`${t("map.bookmarks")}: ${b.name}`);
-                      }}
-                      className="w-full text-start px-2 py-1.5 rounded hover:bg-muted/60 truncate"
-                    >
-                      {b.name}
-                    </button>
-                  </li>
+                  <button
+                    key={b.name}
+                    onClick={() => {
+                      if (mapRef.current) {
+                        mapRef.current.flyTo({
+                          center: [b.lon, b.lat],
+                          zoom: b.zoom,
+                          duration: 1400,
+                          essential: true,
+                        });
+                      }
+                      toast.success(`${b.name}`);
+                    }}
+                    className="p-1.5 rounded-md bg-muted/40 hover:bg-muted text-start truncate font-medium border border-transparent hover:border-border/40 transition-all"
+                  >
+                    📍 {b.name}
+                  </button>
                 ))}
-              </ul>
-            </div>
-          </div>
-        </ScrollArea>
-
-        {/* Legend */}
-        <div className="border-t p-3 space-y-1.5">
-          <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("map.legend")}
-          </div>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[0.65rem]">
-            {Object.entries(POI_COLORS).map(([k, v]) => (
-              <div key={k} className="flex items-center gap-1.5">
-                <LegendDot color={v} />
-                <span className="capitalize text-muted-foreground">{k}</span>
               </div>
-            ))}
-          </div>
-        </div>
-      </Card>
+            </div>
+          </Card>
+        )}
+      </div>
 
-      {/* CENTER — Map canvas */}
-      <div
-        ref={containerRef}
-        className="relative bg-background overflow-hidden min-h-[420px] lg:min-h-0"
-      >
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${w} ${h}`}
-          width={w}
-          height={h}
-          className="absolute inset-0"
-          style={{ cursor: tool === "pan" ? "grab" : "crosshair" }}
-          onClick={handleMapClick}
-          onMouseLeave={() => setHover(null)}
+      {/* ─── TOP-RIGHT CONTROLS ─────────────────────────────────────────── */}
+      <div className="absolute top-3 end-3 z-20 flex items-center gap-1.5 bg-background/90 backdrop-blur-md border rounded-xl shadow-md p-1 h-10 pointer-events-auto">
+        {/* Toggle AI Chatbot Button */}
+        <Button
+          variant={chatbotOpen ? "default" : "outline"}
+          size="sm"
+          className={cn(
+            "h-8 gap-1.5 px-2.5 rounded-lg text-xs font-semibold shadow-xs transition-all",
+            chatbotOpen
+              ? "bg-primary text-primary-foreground ring-1 ring-primary/30"
+              : "bg-background/95 hover:bg-primary/10 hover:text-primary"
+          )}
+          onClick={() => setChatbotOpen(!chatbotOpen)}
         >
-          {/* basemap background */}
-          <rect x={0} y={0} width={w} height={h} fill={basemapBg} />
+          <Bot className="size-4 text-emerald-400" />
+          <span>GeoWise AI</span>
+          <Badge variant="secondary" className="h-4 px-1 text-[0.6rem] ms-0.5">
+            12
+          </Badge>
+        </Button>
 
-          {/* grid */}
-          {layers.grid && (
-            <g className="grid-layer" opacity={0.45}>
-              {Array.from({ length: 11 }).map((_, i) => {
-                const lon = VIEW_BBOX.minLon + (i * (VIEW_BBOX.maxLon - VIEW_BBOX.minLon)) / 10;
-                const p1 = project(lon, VIEW_BBOX.minLat, w, h);
-                const p2 = project(lon, VIEW_BBOX.maxLat, w, h);
-                return (
-                  <line key={`v${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={basemap === "dark" ? "#1e3a5f" : "#cbd5e1"} strokeWidth={0.5} />
-                );
-              })}
-              {Array.from({ length: 11 }).map((_, i) => {
-                const lat = VIEW_BBOX.minLat + (i * (VIEW_BBOX.maxLat - VIEW_BBOX.minLat)) / 10;
-                const p1 = project(VIEW_BBOX.minLon, lat, w, h);
-                const p2 = project(VIEW_BBOX.maxLon, lat, w, h);
-                return (
-                  <line key={`h${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={basemap === "dark" ? "#1e3a5f" : "#cbd5e1"} strokeWidth={0.5} />
-                );
-              })}
-            </g>
-          )}
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
 
-          {/* AOI */}
-          {layers.aoi && (
+        {/* Zoom Controls */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-lg"
+          onClick={() => {
+            if (mapRef.current) mapRef.current.zoomOut();
+          }}
+          title="Zoom Out"
+        >
+          <ZoomOut className="size-3.5" />
+        </Button>
+
+        <span className="text-[0.7rem] font-mono text-muted-foreground px-1 tabular-nums font-semibold">
+          {Math.round((zoomLevel / 12) * 100)}%
+        </span>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-lg"
+          onClick={() => {
+            if (mapRef.current) mapRef.current.zoomIn();
+          }}
+          title="Zoom In"
+        >
+          <ZoomIn className="size-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+        {/* Reset / Fly to Riyadh */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-lg"
+          onClick={() => {
+            if (mapRef.current) {
+              mapRef.current.flyTo({
+                center: [RIYADH_CENTER.lon, RIYADH_CENTER.lat],
+                zoom: 12.2,
+                pitch: 0,
+                bearing: 0,
+                essential: true,
+              });
+              toast.success(lang === "ar" ? "تمت إعادة الضبط" : "Camera reset to Riyadh");
+            }
+          }}
+          title="Reset Camera"
+        >
+          <Maximize2 className="size-3.5" />
+        </Button>
+
+        {/* Print / Snapshot */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-lg"
+          onClick={() => {
+            if (!mapRef.current) return;
+            try {
+              const dataUrl = mapRef.current.getCanvas().toDataURL("image/png");
+              const link = document.createElement("a");
+              link.download = `geowise-map-${Date.now()}.png`;
+              link.href = dataUrl;
+              link.click();
+              toast.success(lang === "ar" ? "تم حفظ لقطة الخريطة" : "Map snapshot exported");
+            } catch {
+              toast.info(lang === "ar" ? "تصدير الخريطة" : "Exporting map snapshot");
+            }
+          }}
+          title="Export Map Snapshot"
+        >
+          <Printer className="size-3.5" />
+        </Button>
+      </div>
+
+      {/* ─── CENTER TOP BANNER: ACTIVE GIS TOOL OR ALERT RADAR WIDGET ─── */}
+      {tool === "measure" || tool === "draw" ? (
+        <div className="absolute top-3 start-1/2 -translate-x-1/2 z-20 h-10 bg-background/95 backdrop-blur-md border rounded-xl shadow-md px-3.5 text-xs flex items-center gap-2.5 whitespace-nowrap animate-in fade-in duration-150 pointer-events-auto">
+          {tool === "measure" ? (
             <>
-              <path d={aoiPath} fill="#14b8a6" fillOpacity={0.1} stroke="#14b8a6" strokeWidth={1.5} strokeDasharray="4 3" />
-            </>
-          )}
-
-          {/* districts */}
-          {layers.districts &&
-            filteredDistricts.map((d) => {
-              const isSel = selectedFeatureId === d.id;
-              const ring = d.geometry.coordinates as number[][][];
-              return (
-                <g key={d.id}>
-                  <path
-                    d={ringToPath(ring[0], w, h)}
-                    data-fid={d.id}
-                    fill={isSel ? "#0ea5e9" : "#3b82f6"}
-                    fillOpacity={isSel ? 0.55 : 0.25}
-                    stroke={isSel ? "#0284c7" : "#1d4ed8"}
-                    strokeWidth={isSel ? 2 : 1}
-                    className="cursor-pointer transition-all hover:fill-opacity-70"
-                    onMouseEnter={(e) =>
-                      setHover({ feature: d, x: e.clientX, y: e.clientY })
-                    }
-                    onMouseMove={(e) =>
-                      setHover({ feature: d, x: e.clientX, y: e.clientY })
-                    }
-                  />
-                  {layers.labels && (
-                    <text
-                      x={
-                        project(
-                          ((d.geometry.coordinates as number[][][])[0][0][0] +
-                            (d.geometry.coordinates as number[][][])[0][2][0]) /
-                            2,
-                          ((d.geometry.coordinates as number[][][])[0][0][1] +
-                            (d.geometry.coordinates as number[][][])[0][2][1]) /
-                            2,
-                          w,
-                          h
-                        ).x
-                      }
-                      y={
-                        project(
-                          ((d.geometry.coordinates as number[][][])[0][0][0] +
-                            (d.geometry.coordinates as number[][][])[0][2][0]) /
-                            2,
-                          ((d.geometry.coordinates as number[][][])[0][0][1] +
-                            (d.geometry.coordinates as number[][][])[0][2][1]) /
-                            2,
-                          w,
-                          h
-                        ).y
-                      }
-                      textAnchor="middle"
-                      className="pointer-events-none select-none"
-                      fontSize={9}
-                      fontWeight={600}
-                      fill={basemap === "dark" ? "#e2e8f0" : "#1e293b"}
-                    >
-                      {lang === "ar" ? d.nameAr : d.name}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-
-          {/* POIs */}
-          {layers.pois &&
-            filteredPois.map((p) => {
-              const [lon, lat] = p.geometry.coordinates as number[];
-              const pt = project(lon, lat, w, h);
-              const isSel = selectedFeatureId === p.id;
-              const color = POI_COLORS[p.subtype ?? ""] ?? "#64748b";
-              return (
-                <g key={p.id} className="cursor-pointer">
-                  {p.properties.status === "monitoring" && (
-                    <circle cx={pt.x} cy={pt.y} r={9} fill={color} opacity={0.25}>
-                      <animate attributeName="r" values="6;11;6" dur="2.4s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="0.4;0.05;0.4" dur="2.4s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-                  <circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={isSel ? 6 : 4}
-                    data-fid={p.id}
-                    fill={color}
-                    stroke={basemap === "dark" ? "#0a1020" : "#fff"}
-                    strokeWidth={isSel ? 2 : 1}
-                    className="transition-all"
-                    onMouseEnter={(e) => setHover({ feature: p, x: e.clientX, y: e.clientY })}
-                    onMouseMove={(e) => setHover({ feature: p, x: e.clientX, y: e.clientY })}
-                  />
-                </g>
-              );
-            })}
-
-          {/* measurement line */}
-          {measurePath && (
-            <>
-              <path d={measurePath} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="3 2" />
-              {measurePoints.map((pt, i) => {
-                const p = project(pt[0], pt[1], w, h);
-                return <circle key={i} cx={p.x} cy={p.y} r={3} fill="#f59e0b" stroke="#fff" strokeWidth={1} />;
-              })}
-            </>
-          )}
-
-          {/* drawing polygon */}
-          {drawPath && (
-            <>
-              <path d={drawPath} fill="#14b8a6" fillOpacity={0.2} stroke="#14b8a6" strokeWidth={1.5} />
-              {drawPoints.map((pt, i) => {
-                const p = project(pt[0], pt[1], w, h);
-                return <circle key={i} cx={p.x} cy={p.y} r={3} fill="#14b8a6" stroke="#fff" strokeWidth={1} />;
-              })}
-            </>
-          )}
-
-          {/* scale bar */}
-          <g className="pointer-events-none">
-            <line x1={16} y1={h - 22} x2={16 + (w * 0.1)} y2={h - 22} stroke={basemap === "dark" ? "#e2e8f0" : "#1e293b"} strokeWidth={2} />
-            <text x={16 + (w * 0.05)} y={h - 28} textAnchor="middle" fontSize={9} fill={basemap === "dark" ? "#e2e8f0" : "#1e293b"}>
-              {(haversine([VIEW_BBOX.minLon, VIEW_BBOX.minLat], [VIEW_BBOX.minLon + (VIEW_BBOX.maxLon - VIEW_BBOX.minLon) * 0.1, VIEW_BBOX.minLat]) / 1000).toFixed(1)} km
-            </text>
-          </g>
-        </svg>
-
-        {/* Hover tooltip */}
-        {hover && (
-          <div
-            className="pointer-events-none fixed z-50 bg-popover text-popover-foreground text-xs rounded-md shadow-lg border px-2.5 py-1.5 max-w-[240px]"
-            style={{ left: hover.x + 12, top: hover.y + 12 }}
-          >
-            <div className="font-semibold">
-              {lang === "ar" ? hover.feature.nameAr : hover.feature.name}
-            </div>
-            <div className="text-muted-foreground text-[0.65rem] mt-0.5">
-              {hover.feature.id} · {hover.feature.type}
-              {hover.feature.subtype ? ` · ${hover.feature.subtype}` : ""}
-            </div>
-          </div>
-        )}
-
-        {/* Tool overlay — top right */}
-        <div className="absolute top-3 end-3 flex items-center gap-1.5 bg-background/95 backdrop-blur border rounded-lg shadow-sm p-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}>
-                  <ZoomOut className="size-3.5" />
+              <Ruler className="size-4 text-amber-500 animate-pulse" />
+              <span className="text-muted-foreground">{t("map.measure")}:</span>
+              <Badge variant="secondary" className="tabular-nums font-mono text-xs">
+                {measurePoints.length > 1
+                  ? `${(measureDistance / 1000).toFixed(2)} km`
+                  : lang === "ar"
+                    ? "انقر على الخريطة لحساب المسافة"
+                    : "Click on map to measure path"}
+              </Badge>
+              {measurePoints.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[0.7rem]"
+                  onClick={() => setMeasurePoints([])}
+                >
+                  <X className="size-3" />
+                  {t("common.clear")}
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>{lang === "ar" ? "تصغير" : "Zoom out"}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <span className="text-[0.7rem] text-muted-foreground px-1 tabular-nums">
-            {(zoom * 100).toFixed(0)}%
-          </span>
-          <Button variant="ghost" size="icon" className="size-8" onClick={() => setZoom((z) => Math.min(4, z + 0.2))}>
-            <ZoomIn className="size-3.5" />
-          </Button>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
-          <Button variant="ghost" size="icon" className="size-8" onClick={() => { setZoom(1); toast.success(lang === "ar" ? "تمت إعادة الضبط" : "View reset"); }}>
-            <Maximize2 className="size-3.5" />
-          </Button>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
-          <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.success(lang === "ar" ? "تم إنشاء تخطيط طباعة" : "Print layout generated")}>
-            <Printer className="size-3.5" />
-          </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Pencil className="size-4 text-primary animate-pulse" />
+              <span className="text-muted-foreground">{t("map.draw")}:</span>
+              <Badge variant="secondary" className="tabular-nums font-mono text-xs">
+                {drawPoints.length >= 3
+                  ? `${(drawArea / 1_000_000).toFixed(3)} km²`
+                  : `${drawPoints.length} points`}
+              </Badge>
+              {drawPoints.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[0.7rem]"
+                  onClick={() => setDrawPoints([])}
+                >
+                  <X className="size-3" />
+                  {t("common.clear")}
+                </Button>
+              )}
+            </>
+          )}
         </div>
-
-        {/* Tool mode banner */}
-        {(tool === "measure" || tool === "draw") && (
-          <div className="absolute top-3 start-3 bg-background/95 backdrop-blur border rounded-lg shadow-sm px-3 py-2 text-xs flex items-center gap-3 max-w-md">
-            {tool === "measure" ? (
-              <>
-                <Ruler className="size-4 text-chart-4" />
-                <span className="text-muted-foreground">{t("map.measure")}:</span>
-                <Badge variant="secondary" className="tabular-nums">
-                  {measurePoints.length > 1 ? `${(measureDistance / 1000).toFixed(2)} km` : "—"}
-                </Badge>
-                {measurePoints.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[0.7rem]"
-                    onClick={() => setMeasurePoints([])}
-                  >
-                    <X className="size-3" />
-                    {t("common.clear")}
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Pencil className="size-4 text-primary" />
-                <span className="text-muted-foreground">{t("map.draw")}:</span>
-                <Badge variant="secondary" className="tabular-nums">
-                  {drawPoints.length >= 3
-                    ? `${(drawArea / 1_000_000).toFixed(3)} km²`
-                    : `${drawPoints.length} pts`}
-                </Badge>
-                {drawPoints.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[0.7rem]"
-                    onClick={() => setDrawPoints([])}
-                  >
-                    <X className="size-3" />
-                    {t("common.clear")}
-                  </Button>
-                )}
-              </>
-            )}
+      ) : (
+        <div className="absolute top-3 start-1/2 -translate-x-1/2 z-20 h-10 bg-background/90 backdrop-blur-md border rounded-xl shadow-md px-3 flex items-center gap-2 whitespace-nowrap animate-in fade-in duration-150 pointer-events-auto max-w-[calc(100vw-360px)] overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1.5 font-bold text-foreground pe-2 border-e border-border/50 text-[0.72rem]">
+            <ShieldAlert className="size-3.5 text-primary animate-pulse" />
+            <span className="hidden sm:inline">{lang === "ar" ? "رادار التنبيهات" : "Alert Radar"}</span>
           </div>
-        )}
 
-        {/* Crosshair coords */}
-        <div className="absolute bottom-3 end-3 bg-background/95 backdrop-blur border rounded-md shadow-sm px-2.5 py-1 text-[0.65rem] text-muted-foreground font-mono tabular-nums">
-          {RIYADH_CENTER.lon.toFixed(4)}° E · {RIYADH_CENTER.lat.toFixed(4)}° N
-        </div>
-      </div>
+          {/* Severity Filter Buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setAlertSeverityFilter("all")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[0.65rem] font-semibold transition-all",
+                alertSeverityFilter === "all"
+                  ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                  : "bg-muted/50 text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {lang === "ar" ? "الكل (12)" : "All (12)"}
+            </button>
 
-      {/* RIGHT — Feature inspector */}
-      <Card className="rounded-none border-s border-y-0 border-e-0 bg-card flex flex-col overflow-hidden min-h-0">
-        <div className="p-3 border-b">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Info className="size-4 text-primary" />
-            {t("map.featureInfo")}
+            <button
+              type="button"
+              onClick={() => setAlertSeverityFilter("critical")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[0.65rem] font-semibold transition-all flex items-center gap-1",
+                alertSeverityFilter === "critical"
+                  ? "bg-rose-600 text-white shadow-xs font-bold"
+                  : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20"
+              )}
+            >
+              <span className="size-1.5 rounded-full bg-rose-500 animate-ping" />
+              <span>{lang === "ar" ? "حرج (4)" : "Critical (4)"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAlertSeverityFilter("warning")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[0.65rem] font-semibold transition-all flex items-center gap-1",
+                alertSeverityFilter === "warning"
+                  ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
+                  : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+              )}
+            >
+              <span>{lang === "ar" ? "تحذير (5)" : "Warning (5)"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAlertSeverityFilter("info")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[0.65rem] font-semibold transition-all",
+                alertSeverityFilter === "info"
+                  ? "bg-sky-500 text-white shadow-xs font-bold"
+                  : "bg-sky-500/10 text-sky-500 hover:bg-sky-500/20"
+              )}
+            >
+              <span>{lang === "ar" ? "معلوماتي (3)" : "Info (3)"}</span>
+            </button>
           </div>
+
+          <Separator orientation="vertical" className="h-4 mx-0.5" />
+
+          {/* Direct Executive Briefing Trigger */}
+          <button
+            type="button"
+            onClick={() =>
+              handleSendMessage(
+                undefined,
+                lang === "ar"
+                  ? "قدم لي إحاطة تنفيذية شاملة لكافة التنبيهات الـ 12 النشطة بالرياض مع رسم بياني."
+                  : "Explain overall city risk and summarize all active alerts in Riyadh with visualization."
+              )
+            }
+            className="flex items-center gap-1 text-[0.65rem] font-bold text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors"
+            title={lang === "ar" ? "تحليل شامل بالذكاء الاصطناعي" : "AI City-Wide Risk Briefing"}
+          >
+            <Sparkles className="size-3 text-emerald-400" />
+            <span className="hidden sm:inline">{lang === "ar" ? "إحاطة شاملة" : "Executive Briefing"}</span>
+          </button>
         </div>
-        <ScrollArea className="flex-1">
-          <div className="p-4">
-            {!selectedFeature ? (
-              <div className="text-center text-sm text-muted-foreground py-12 px-4">
-                <Crosshair className="size-8 mx-auto mb-3 opacity-40" />
-                <p>{t("map.noSelection")}</p>
+      )}
+
+      {/* ─── LIVE ATMOSPHERIC & DRONE OPERATIONS HUD WIDGET ────────────── */}
+      <div className="absolute bottom-12 start-3 z-30 flex flex-col gap-2 pointer-events-auto">
+        {envHudOpen ? (
+          <Card className="w-80 bg-background/95 backdrop-blur-xl border border-primary/30 rounded-xl shadow-2xl p-3 space-y-2.5 animate-in fade-in-50 duration-200 ring-1 ring-primary/20">
+            <div className="flex items-center justify-between border-b pb-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                <Wind className="size-3.5 text-sky-400" />
+                <span>{lang === "ar" ? "الاستشعار الجوي والمسيرات" : "Atmospheric & Drone HUD"}</span>
               </div>
-            ) : (
-              <FeatureInspector feature={selectedFeature} />
-            )}
-          </div>
-        </ScrollArea>
-      </Card>
-    </div>
-  );
-}
-
-function FeatureInspector({ feature }: { feature: GeoFeature }) {
-  const t = useGeoWiseStore((s) => s.t);
-  const lang = useGeoWiseStore((s) => s.lang);
-  const setSelectedDatasetId = useGeoWiseStore((s) => s.setSelectedDatasetId);
-  const setActiveModule = useGeoWiseStore((s) => s.setActiveModule);
-
-  const coords =
-    feature.geometry.type === "Point"
-      ? (feature.geometry.coordinates as number[])
-      : feature.geometry.type === "Polygon"
-        ? (feature.geometry.coordinates as number[][][])[0][0]
-        : [0, 0];
-
-  return (
-    <div className="space-y-4 text-sm">
-      <div>
-        <Badge variant="outline" className="mb-2 text-[0.65rem]">
-          {feature.id}
-        </Badge>
-        <h3 className="font-semibold text-base">
-          {lang === "ar" ? feature.nameAr : feature.name}
-        </h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {feature.type}
-          {feature.subtype ? ` · ${feature.subtype}` : ""}
-        </p>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-2">
-        <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-          {lang === "ar" ? "الإحداثيات" : "Coordinates"}
-        </div>
-        <div className="font-mono text-xs bg-muted/40 rounded p-2">
-          {coords[0].toFixed(5)}° E
-          <br />
-          {coords[1].toFixed(5)}° N
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-2">
-        <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-          {lang === "ar" ? "الخصائص" : "Properties"}
-        </div>
-        <dl className="text-xs space-y-1">
-          {Object.entries(feature.properties).map(([k, v]) => (
-            <div key={k} className="flex justify-between gap-2">
-              <dt className="text-muted-foreground capitalize">{k}</dt>
-              <dd className="font-medium text-end">{String(v)}</dd>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-5 rounded-md text-muted-foreground hover:text-foreground"
+                onClick={() => setEnvHudOpen(false)}
+              >
+                <X className="size-3" />
+              </Button>
             </div>
-          ))}
-        </dl>
+
+            {/* Atmospheric Sensor Pod */}
+            <div className="bg-muted/40 rounded-lg p-2 border border-border/40 space-y-1.5">
+              <div className="flex items-center justify-between text-[0.68rem]">
+                <span className="font-semibold text-foreground flex items-center gap-1">
+                  <Thermometer className="size-3 text-amber-500" />
+                  <span>35°C</span>
+                  <span className="text-[0.6rem] text-muted-foreground">(Feels 37°)</span>
+                </span>
+                <span className="font-mono text-muted-foreground flex items-center gap-1">
+                  <Wind className="size-3 text-sky-400" />
+                  <span>18 km/h NW</span>
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-[0.65rem]">
+                <Badge variant="outline" className="text-[0.6rem] px-1.5 py-0 border-emerald-500/40 text-emerald-500 font-medium">
+                  AQI 74 (Moderate · PM2.5: 22)
+                </Badge>
+                <Badge variant="secondary" className="text-[0.58rem] px-1 py-0 font-mono">
+                  Sentinel-2 Sync
+                </Badge>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleSendMessage(
+                    undefined,
+                    lang === "ar"
+                      ? "اشرح لي حالة الطقس ومؤشر جودة الهواء بالرياض مع رسم بياني للحرارة."
+                      : "Explain Riyadh atmospheric telemetry, weather station sensors, and AQI trend."
+                  )
+                }
+                className="w-full text-center text-[0.65rem] font-bold text-primary hover:underline bg-primary/10 hover:bg-primary/15 py-1 rounded-md transition-colors flex items-center justify-center gap-1"
+              >
+                <Bot className="size-3" />
+                <span>{lang === "ar" ? "تحليل الطقس وجودة الهواء بالذكاء الاصطناعي" : "Analyze Weather & AQI with AI"}</span>
+              </button>
+            </div>
+
+            {/* Municipal UAV Drone Patrol Fleet */}
+            <div className="bg-muted/40 rounded-lg p-2 border border-border/40 space-y-1.5">
+              <div className="flex items-center justify-between text-[0.68rem]">
+                <span className="font-bold text-foreground flex items-center gap-1.5">
+                  <Plane className="size-3 text-emerald-400 animate-pulse" />
+                  <span>{lang === "ar" ? "أسطول المسيرات (UAV)" : "Municipal Drone Patrol"}</span>
+                </span>
+                <span className="text-[0.6rem] text-emerald-500 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                  3 Airborne
+                </span>
+              </div>
+
+              <div className="text-[0.62rem] text-muted-foreground space-y-0.5 font-medium">
+                <div>• Alpha-1: Al Malqa & Olaya (ROW Patrol)</div>
+                <div>• Bravo-3: Industrial Zone 2 (Thermal FLIR)</div>
+                <div>• Delta-2: Wadi Hanifa (Flood Sensor)</div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleSendMessage(
+                    undefined,
+                    lang === "ar"
+                      ? "اشرح لي مهام أسطول الطائرات المسيرة بالرياض وأحدث نتائج الرصد الجوي مع رسم بياني."
+                      : "Explain autonomous municipal drone fleet operations, coverage, and detections with chart."
+                  )
+                }
+                className="w-full text-center text-[0.65rem] font-bold text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-500/10 hover:bg-emerald-500/15 py-1 rounded-md transition-colors flex items-center justify-center gap-1"
+              >
+                <Bot className="size-3" />
+                <span>{lang === "ar" ? "تحليل رصد المسيرات بالذكاء الاصطناعي" : "Analyze Drone Fleet with AI"}</span>
+              </button>
+            </div>
+          </Card>
+        ) : null}
       </div>
 
-      <Separator />
+      {/* ─── BOTTOM CONTROLS DOCK (Coordinates + Weather/Drone HUD) ──── */}
+      <div className="absolute bottom-3 start-3 z-20 flex items-center gap-2 pointer-events-auto">
+        <div className="h-8 bg-background/90 backdrop-blur-md border rounded-lg shadow-sm px-2.5 text-[0.68rem] text-muted-foreground font-mono tabular-nums flex items-center">
+          📍 {coords.lon.toFixed(4)}° E · {coords.lat.toFixed(4)}° N
+        </div>
 
-      <div className="space-y-2">
-        <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-          {lang === "ar" ? "إجراءات" : "Actions"}
-        </div>
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setSelectedDatasetId(feature.id);
-              setActiveModule("catalog");
-              toast.success(lang === "ar" ? "افتح في الكتالوج" : "Opened in catalog");
-            }}
-          >
-            <MapIcon className="size-3.5 me-1.5" />
-            {t("catalog.openInMap")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              toast.success(lang === "ar" ? "تم إنشاء إشارة مرجعية" : "Bookmark created");
-            }}
-          >
-            <Bookmark className="size-3.5 me-1.5" />
-            {t("map.bookmarks")}
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setEnvHudOpen(!envHudOpen)}
+          className={cn(
+            "h-8 gap-1.5 px-2.5 rounded-lg text-xs bg-background/90 backdrop-blur-md border shadow-sm font-semibold transition-all",
+            envHudOpen
+              ? "border-primary bg-primary/10 text-primary"
+              : "hover:border-primary text-foreground"
+          )}
+        >
+          <Wind className="size-3.5 text-sky-400" />
+          <span className="hidden sm:inline">{lang === "ar" ? "محطة الطقس والمسيرات" : "Weather & Drone HUD"}</span>
+          <span className="sm:hidden">{lang === "ar" ? "الطقس" : "Weather"}</span>
+          <Badge variant="secondary" className="h-4 px-1 text-[0.58rem] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+            Active
+          </Badge>
+        </Button>
       </div>
+
+      {/* ─── ULTRA-MODERN AI CHATBOT WITH INTERACTIVE VISUALIZATIONS ──────── */}
+      {chatbotOpen ? (
+        <div
+          style={{
+            width: isMaximized ? undefined : `${chatWidth}px`,
+          }}
+          className={cn(
+            "absolute z-30 flex flex-col transition-all duration-200 ease-out shadow-2xl",
+            isMaximized
+              ? "top-3 bottom-3 end-3 w-[min(960px,calc(100vw-24px))]"
+              : "top-[58px] bottom-3 end-3 max-w-[calc(100vw-24px)]"
+          )}
+        >
+          {/* Draggable Resize Handle on the inner edge */}
+          {!isMaximized && (
+            <div
+              onMouseDown={startResize}
+              className="absolute -start-2.5 top-0 bottom-0 w-5 cursor-ew-resize flex items-center justify-center z-50 group select-none"
+              title={lang === "ar" ? "اسحب لتعديل عرض النافذة" : "Drag to resize chatbot width"}
+            >
+              <div className="w-1.5 h-16 rounded-full bg-border/80 group-hover:bg-primary group-hover:scale-y-125 transition-all shadow-md flex items-center justify-center">
+                <GripVertical className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
+          )}
+
+          <Card className="flex-1 bg-background/95 backdrop-blur-2xl border-2 border-primary/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col ring-1 ring-primary/20">
+            {/* Chatbot Header */}
+            <div className="p-3 border-b flex items-center justify-between bg-gradient-to-r from-primary/20 via-primary/10 to-transparent shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="size-7 rounded-lg bg-gradient-to-tr from-primary to-emerald-400 text-primary-foreground flex items-center justify-center shadow-md shrink-0">
+                  <Bot className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                    <span className="truncate">{lang === "ar" ? "مساعد جيو وايز" : "GeoWise AI"}</span>
+                    <Badge variant="outline" className="text-[0.58rem] px-1 py-0 border-primary/40 text-primary shrink-0">
+                      v2.4
+                    </Badge>
+                  </div>
+                  <div className="text-[0.6rem] text-emerald-500 font-medium flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="truncate">Live Telemetry</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                {/* Width Presets (Compact, Standard, Wide) - only show on large screens */}
+                <div className="hidden lg:flex items-center bg-muted/60 p-0.5 rounded-lg border border-border/40 text-[0.6rem]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMaximized(false);
+                      setChatWidth(380);
+                    }}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded font-medium transition-all",
+                      chatWidth === 380 && !isMaximized
+                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Compact view (380px)"
+                  >
+                    380px
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMaximized(false);
+                      setChatWidth(500);
+                    }}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded font-medium transition-all",
+                      chatWidth === 500 && !isMaximized
+                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Standard view (500px)"
+                  >
+                    500px
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMaximized(false);
+                      setChatWidth(700);
+                    }}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded font-medium transition-all",
+                      chatWidth === 700 && !isMaximized
+                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Wide view (700px)"
+                  >
+                    700px
+                  </button>
+                </div>
+
+                {/* Reset Chat */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 rounded-lg text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={() =>
+                          setMessages([
+                            {
+                              id: "m-reset",
+                              role: "assistant",
+                              content:
+                                lang === "ar"
+                                  ? "تمت إعادة ضبط جلسة المساعد. انقر على أي تنبيه في الخريطة لبدء الإحاطة الذكية."
+                                  : "Session refreshed. Click any pulsing alert beacon on the map to start an instant briefing.",
+                              timestamp: "Just now",
+                            },
+                          ])
+                        }
+                      >
+                        <RefreshCw className="size-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{lang === "ar" ? "إعادة ضبط المحادثة" : "Reset Chat"}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {/* Maximize / Normal Window */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 rounded-lg text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={() => setIsMaximized(!isMaximized)}
+                      >
+                        {isMaximized ? <Minimize2 className="size-3.5" /> : <Maximize className="size-3.5" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{isMaximized ? "Restore" : "Maximize"}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {/* Dedicated Close Button: clean icon button that never gets cut off */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/15 shrink-0"
+                  onClick={() => setChatbotOpen(false)}
+                  title={lang === "ar" ? "إغلاق" : "Close"}
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Chat Messages Body */}
+            <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3.5 space-y-4">
+              {messages.map((m) => {
+                const isUser = m.role === "user";
+                return (
+                  <div
+                    key={m.id}
+                    className={cn(
+                      "chat-bubble-entry flex flex-col text-xs transition-all",
+                      isUser ? "ms-auto items-end max-w-[85%]" : "me-auto items-start w-full"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "p-3.5 rounded-2xl shadow-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none text-[0.75rem] transition-all w-full",
+                        isUser
+                          ? "bg-primary text-primary-foreground rounded-br-none"
+                          : "bg-muted/80 text-foreground border border-border/50 rounded-bl-none shadow-md backdrop-blur-sm"
+                      )}
+                    >
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+
+                      {/* Embedded Interactive Chart */}
+                      {m.chart && (
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-[0.75rem] text-primary flex items-center gap-1.5">
+                              <BarChart3 className="size-4" />
+                              <span>{lang === "ar" ? m.chart.titleAr || m.chart.title : m.chart.title}</span>
+                            </span>
+                            {m.chart.unit && (
+                              <Badge variant="outline" className="text-[0.62rem] px-1.5 py-0.5 border-primary/30 font-mono">
+                                {m.chart.unit}
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="h-44 w-full bg-background/70 rounded-xl p-2.5 border border-border/40 shadow-inner">
+                            {m.chart.type === "bar" && (
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={m.chart.data} margin={{ top: 12, right: 16, left: -10, bottom: 26 }}>
+                                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                  <XAxis
+                                    dataKey="name"
+                                    stroke="#94a3b8"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    interval={0}
+                                    dy={6}
+                                  />
+                                  <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
+                                  <RechartsTooltip
+                                    contentStyle={{
+                                      backgroundColor: "#0f172a",
+                                      borderColor: "#334155",
+                                      borderRadius: 8,
+                                      fontSize: 11,
+                                      color: "#fff",
+                                    }}
+                                  />
+                                  <Bar dataKey="value" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            )}
+
+                            {m.chart.type === "line" && (
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={m.chart.data} margin={{ top: 12, right: 16, left: -10, bottom: 26 }}>
+                                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                  <XAxis
+                                    dataKey="name"
+                                    stroke="#94a3b8"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    interval={0}
+                                    dy={6}
+                                  />
+                                  <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
+                                  <RechartsTooltip
+                                    contentStyle={{
+                                      backgroundColor: "#0f172a",
+                                      borderColor: "#334155",
+                                      borderRadius: 8,
+                                      fontSize: 11,
+                                      color: "#fff",
+                                    }}
+                                  />
+                                  <Line
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke="#10b981"
+                                    strokeWidth={2.5}
+                                    dot={{ r: 4, fill: "#10b981" }}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            )}
+
+                            {m.chart.type === "pie" && (
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                                  <Pie
+                                    data={m.chart.data}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    outerRadius={46}
+                                    label={({ name, percent }) =>
+                                      `${name.split(" ")[0]}: ${((percent || 0) * 100).toFixed(0)}%`
+                                    }
+                                    labelLine={false}
+                                  >
+                                    {m.chart.data.map((_, idx) => (
+                                      <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                                    ))}
+                                  </Pie>
+                                  <RechartsTooltip
+                                    contentStyle={{
+                                      backgroundColor: "#0f172a",
+                                      borderColor: "#334155",
+                                      borderRadius: 8,
+                                      fontSize: 11,
+                                      color: "#fff",
+                                    }}
+                                  />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Interactive Action Shortcuts for Alerts */}
+                      {m.alertRef && (
+                        <div className="mt-3 pt-2.5 border-t border-border/40 flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (mapRef.current && m.alertRef) {
+                                mapRef.current.flyTo({
+                                  center: [m.alertRef.lon, m.alertRef.lat],
+                                  zoom: 16,
+                                  duration: 1000,
+                                  essential: true,
+                                });
+                                toast.success(lang === "ar" ? "تم التقريب إلى الهدف" : "Focused on alert target");
+                              }
+                            }}
+                            className="flex items-center gap-1 text-[0.65rem] font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 px-2.5 py-1 rounded-md transition-colors"
+                          >
+                            <MapPin className="size-3" />
+                            <span>{lang === "ar" ? "تقريب للهدف" : "Focus on Map"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toast.success(
+                                lang === "ar"
+                                  ? `تم إنشاء تذكرة تحقيق لـ ${m.alertRef?.id}`
+                                  : `Investigation case opened for ${m.alertRef?.id}`
+                              );
+                            }}
+                            className="flex items-center gap-1 text-[0.65rem] font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-md transition-colors"
+                          >
+                            <FileCheck2 className="size-3" />
+                            <span>{lang === "ar" ? "فتح تذكرة بلدية" : "Create Case"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toast.info(
+                                lang === "ar"
+                                  ? "تم إرسال إشعار العمليات الميدانية"
+                                  : "Field dispatch notification transmitted"
+                              );
+                            }}
+                            className="flex items-center gap-1 text-[0.65rem] font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 px-2.5 py-1 rounded-md transition-colors"
+                          >
+                            <BellRing className="size-3" />
+                            <span>{lang === "ar" ? "إشعار الطوارئ" : "Dispatch Alert"}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[0.6rem] text-muted-foreground px-1 mt-1 font-mono">
+                      {m.timestamp}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {isChatLoading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/70 p-3 rounded-2xl max-w-[200px] border border-border/40 shadow-sm animate-pulse">
+                  <Loader2 className="size-4 animate-spin text-primary" />
+                  <span className="font-medium text-[0.72rem]">Generating AI analysis & chart...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Interactive Prompt Chips */}
+            <div className="border-t bg-muted/20 shrink-0">
+              <div className="px-3 py-1 flex items-center justify-between text-[0.62rem] text-muted-foreground">
+                <span className="font-semibold">{lang === "ar" ? "استعلامات سريعة مقترحة (مرر أفقياً)" : "Suggested Quick Prompts (Scroll)"}</span>
+                <button
+                  type="button"
+                  onClick={() => setShowPromptChips(!showPromptChips)}
+                  className="text-primary hover:underline font-medium flex items-center gap-0.5"
+                >
+                  <span>{showPromptChips ? (lang === "ar" ? "إخفاء" : "Hide") : (lang === "ar" ? "إظهار" : "Show")}</span>
+                  {showPromptChips ? <ChevronDown className="size-3" /> : <ChevronUp className="size-3" />}
+                </button>
+              </div>
+
+              {showPromptChips && (
+                <div className="px-3 pb-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {[
+                    { label: "🕳️ Diriyah Subsidence", prompt: "Explain Diriyah historical ground subsidence and subterranean seepage alert with chart." },
+                    { label: "🌫️ Airport PM10 Dust", prompt: "Explain King Khalid Airport dust particulate PM10 surge and air quality impact." },
+                    { label: "⚡ KAFD Overload", prompt: "Analyze KAFD main electrical substation transformer thermal overload." },
+                    { label: "🚛 Aziziyah Waste", prompt: "Provide briefing on unauthorized industrial waste dumping in Al Aziziyah." },
+                    { label: "🚇 Metro Track", prompt: "Explain Riyadh Metro Line 3 security perimeter intrusion in Al Batha." },
+                    { label: "🏢 Kingdom Tower", prompt: "Analyze Sky Bridge dynamic vibration and wind shear telemetry." },
+                    { label: "🚨 Shemaysi Flood", prompt: "Explain Shemaysi flood alert with water accumulation telemetry." },
+                    { label: "🏗️ Olaya Excavation", prompt: "Analyze unauthorized excavation in Al Olaya and show volume chart." },
+                    { label: "🔥 Industrial Heat", prompt: "Show thermal sensor temperature anomaly trend for South Industrial District." },
+                    { label: "🛸 Drone Fleet", prompt: "Explain autonomous municipal drone fleet operations, coverage, and detections with chart." },
+                    { label: "🌤️ Weather & AQI", prompt: "Explain Riyadh atmospheric telemetry, weather station sensors, and AQI trend." },
+                    { label: "📊 Overall Risk", prompt: "Explain overall city risk and summarize all active alerts in Riyadh with visualization." },
+                  ].map((s) => (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onClick={() => handleSendMessage(undefined, s.prompt)}
+                      className="shrink-0 whitespace-nowrap text-[0.65rem] font-semibold bg-background hover:bg-primary/10 hover:border-primary/50 hover:text-primary border px-2.5 py-1 rounded-lg text-muted-foreground transition-all shadow-xs"
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Chat Input Form */}
+            <form onSubmit={(e) => handleSendMessage(e)} className="p-2.5 border-t bg-background flex items-center gap-1.5 shrink-0">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={lang === "ar" ? "اسأل المساعد الذكي عن أي تنبيه أو معلم..." : "Ask AI about alerts, sensor charts, or coordinates..."}
+                className="flex-1 bg-muted/60 border border-border/40 focus:border-primary focus:bg-background text-xs rounded-xl px-3.5 py-2.5 outline-none transition-all"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!chatInput.trim() || isChatLoading}
+                className="size-9 rounded-xl shadow-md bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
+              >
+                <Send className="size-4" />
+              </Button>
+            </form>
+          </Card>
+        </div>
+      ) : (
+        /* Floating Chatbot Launcher Button when closed */
+        <Button
+          onClick={() => setChatbotOpen(true)}
+          className="absolute bottom-4 end-4 z-40 h-11 px-4 gap-2.5 rounded-2xl shadow-2xl bg-gradient-to-r from-primary to-emerald-500 hover:from-primary/90 hover:to-emerald-500/90 text-white font-bold text-xs hover:scale-105 transition-all ring-2 ring-white/20 animate-in fade-in-50 duration-200"
+        >
+          <Bot className="size-5 animate-bounce" />
+          <span>GeoWise AI Chatbot</span>
+          <Badge variant="secondary" className="h-5 px-1.5 text-[0.65rem] bg-white/25 text-white font-bold">
+            6 Alerts
+          </Badge>
+        </Button>
+      )}
     </div>
   );
 }

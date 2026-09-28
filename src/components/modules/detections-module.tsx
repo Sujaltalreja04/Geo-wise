@@ -38,7 +38,7 @@ async function patchDetection(id: string, action: "verify" | "reject" | "createC
   return res.json();
 }
 
-const STATUS_STYLES: Record<Detection["status"], { label: string; cls: string; icon: typeof CheckCircle2 }> = {
+const STATUS_STYLES: Record<Detection["status"], { label: string; labelAr: string; cls: string; icon: typeof CheckCircle2 }> = {
   pending: { label: "Pending review", labelAr: "بانتظار المراجعة", cls: "bg-chart-4/15 text-chart-4 border-chart-4/30", icon: Clock },
   verified: { label: "Verified", labelAr: "موثّق", cls: "bg-chart-3/15 text-chart-3 border-chart-3/30", icon: CheckCircle2 },
   rejected: { label: "Rejected", labelAr: "مرفوض", cls: "bg-muted text-muted-foreground border-border", icon: XCircle },
