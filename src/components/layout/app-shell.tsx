@@ -33,7 +33,7 @@ function MobileSidebar() {
         </Button>
       </SheetTrigger>
       <SheetContent
-        side="start"
+        side={lang === "ar" ? "right" : "left"}
         className="w-72 p-0 bg-sidebar text-sidebar-foreground border-e-0"
       >
         <SheetTitle className="sr-only">{t("brand.name")}</SheetTitle>
