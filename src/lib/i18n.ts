@@ -229,6 +229,29 @@ export const dictionary = {
   },
   "assistant.thinking": { en: "Consulting the knowledge base…", ar: "جارٍ الرجوع إلى قاعدة المعرفة…" },
 
+  // Reports & Publishing
+  "reports.title": { en: "Reports & Publishing", ar: "التقارير والنشر الرسمي" },
+  "reports.subtitle": {
+    en: "Official municipal intelligence dossiers, spatial analytics summaries, and cryptographically verified exports.",
+    ar: "ملفات الاستخبارات المكانية البلدية الرسمية والتحليلات الجغرافية والتصدير الموثق رقمياً.",
+  },
+  "reports.new": { en: "Generate New Dossier", ar: "إنشاء ملف تقرير جديد" },
+  "reports.filter.all": { en: "All Reports", ar: "كافة التقارير" },
+  "reports.filter.published": { en: "Published", ar: "التقارير المنشورة" },
+  "reports.filter.approved": { en: "Approved", ar: "المعتمدة" },
+  "reports.filter.review": { en: "In Review", ar: "قيد المراجعة" },
+  "reports.filter.draft": { en: "Drafts", ar: "المسودات" },
+  "reports.search": { en: "Search reports by title, ID, district or author...", ar: "ابحث بالاسم أو المعرف أو الحي أو المسؤول..." },
+  "reports.exportPdf": { en: "Print / Official PDF", ar: "طباعة / ملف PDF رسمي" },
+  "reports.exportXlsx": { en: "Export CSV / Excel", ar: "تصدير CSV / إكسل" },
+  "reports.viewDossier": { en: "View Dossier", ar: "عرض الملف الكامل" },
+  "reports.provenance": { en: "Provenance & Digital Signatures", ar: "سلالة البيانات والتوقيع الرقمي" },
+  "reports.approver": { en: "Approval Authority", ar: "جهة الاعتماد" },
+  "reports.author": { en: "Lead Analyst / Author", ar: "المحلل الرئيسي / المعدّ" },
+  "reports.metrics": { en: "Spatial Metrics & Scope", ar: "المؤشرات المكانية والنطاق" },
+  "reports.findings": { en: "Key Geospatial Findings", ar: "أبرز النتائج الجيومكانية" },
+  "reports.recommendations": { en: "Enforcement Recommendations", ar: "توصيات الضبط والإنفاذ" },
+
   // Audit
   "audit.title": { en: "Audit & Governance Log", ar: "سجل التدقيق والحوكمة" },
   "audit.subtitle": {

@@ -730,18 +730,8 @@ export function MapWorkspace() {
       role: "assistant",
       content:
         lang === "ar"
-          ? "مرحباً بك في **مساعد جيو وايز الجيومكاني الذكي** 🛰️.\n\nتم تفعيل **12 تنبيهاً ذكياً نشطاً** عبر أحياء الرياض مع مجسات الاستشعار البيئي ومحطة الرصد ودوريات الطائرات المسيرة (UAV).\n\nانقر على أي **منبه أو ودجت بالخريطة** أو اسألني وسأقوم فوراً بتقديم إحاطة تحليلية ورسم بياني تفاعلي."
-          : "Welcome to **GeoWise AI Geospatial Intelligence** 🛰️.\n\n**12 active intelligence alerts** are currently live across Riyadh, integrated with atmospheric weather stations and autonomous UAV drone patrols.\n\nClick any **alert beacon or map widget**, or ask me in the chat and I will immediately deliver a detailed briefing with interactive telemetry charts.",
-      chart: {
-        type: "pie",
-        title: "Active Alerts Distribution by Category (Total 12)",
-        titleAr: "توزيع التنبيهات الحية الـ 12 حسب الخطورة",
-        data: [
-          { name: "Critical Hazards", value: 4 },
-          { name: "Regulatory Warnings", value: 5 },
-          { name: "Infrastructure Info", value: 3 },
-        ],
-      },
+          ? "مرحباً بك في **مساعد جيو وايز الجيومكاني الذكي** 🛰️.\n\nأنا متصل مباشرة بنموذج **Mistral AI** مع إمكانية الوصول إلى كافة بيانات الرصد الجيومكاني لمدينة الرياض (التنبيهات الحية، محطات الرصد، وأسراب الطائرات المسيرة).\n\nاسألني عن أي موقع، تنبيه، أو مؤشر بيئي وسأجيبك بذكاء وديناميكية فورية."
+          : "Welcome to **GeoWise AI Copilot** 🛰️.\n\nConnected directly to **Mistral AI** with real-time access to Riyadh's geospatial intelligence.\n\nAsk me any question about any location, alert, environmental sensor, or municipal analysis, and I'll analyze it dynamically.",
       timestamp: "Just now",
     },
   ]);
@@ -768,6 +758,26 @@ export function MapWorkspace() {
     }
   }, [messages, isChatLoading]);
 
+  // Synchronize initial welcome message immediately when user toggles site language (EN <-> AR)
+  React.useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].id === "m-welcome") {
+        return [
+          {
+            id: "m-welcome",
+            role: "assistant",
+            content:
+              lang === "ar"
+                ? "مرحباً بك في **مساعد جيو وايز الجيومكاني الذكي** 🛰️.\n\nأنا متصل مباشرة بنموذج **Mistral AI** مع إمكانية الوصول إلى كافة بيانات الرصد الجيومكاني لمدينة الرياض (التنبيهات الحية، محطات الرصد، وأسراب الطائرات المسيرة).\n\nاسألني عن أي موقع، تنبيه، أو مؤشر بيئي وسأجيبك بذكاء وديناميكية فورية."
+                : "Welcome to **GeoWise AI Copilot** 🛰️.\n\nConnected directly to **Mistral AI** with real-time access to Riyadh's geospatial intelligence.\n\nAsk me any question about any location, alert, environmental sensor, or municipal analysis, and I'll analyze it dynamically in English.",
+            timestamp: "Just now",
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [lang]);
+
   // Live measurements
   const measureDistance = React.useMemo(() => {
     if (measurePoints.length < 2) return 0;
@@ -783,71 +793,31 @@ export function MapWorkspace() {
     return polygonArea([...drawPoints, drawPoints[0]]);
   }, [drawPoints]);
 
-  // Trigger Chatbot Explanation with Visualization
+  // Trigger Chatbot Explanation with Visualization via dynamic Mistral AI
   const explainAlertWithChatbot = React.useCallback(
     (alert: MapAlert) => {
       setSelectedAlert(alert);
       setRightPanelOpen(true);
       setChatbotOpen(true);
 
+      if (mapRef.current) {
+        mapRef.current.flyTo({
+          center: [alert.lon, alert.lat],
+          zoom: 15.5,
+          duration: 1200,
+          essential: true,
+        });
+      }
+
       const alertName = lang === "ar" ? alert.titleAr : alert.title;
       const districtName = lang === "ar" ? alert.districtAr : alert.district;
-      const desc = lang === "ar" ? alert.descriptionAr : alert.description;
-      const rec = lang === "ar" ? alert.recommendationAr : alert.recommendation;
 
       const userPrompt =
         lang === "ar"
-          ? `قدم لي تحليلاً شاملاً للتنبيه [${alert.id}]: ${alertName} في ${districtName}`
+          ? `قدم لي تحليلاً للتنبيه [${alert.id}]: ${alertName} في ${districtName}`
           : `Provide an intelligence briefing for alert [${alert.id}]: ${alertName} in ${districtName}`;
 
-      const aiText =
-        lang === "ar"
-          ? `### 🚨 تحليل الذكاء الجيومكاني الميداني
-**الموقع:** حي ${districtName} (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
-**درجة الأولوية:** ${alert.severity === "critical" ? "🔴 حرج للغاية (فوري)" : "🟠 تحذير تنظيمي"}  
-**موثوقية الذكاء الاصطناعي:** ${(alert.confidence * 100).toFixed(0)}% | **التوقيت:** ${alert.time}
-
----
-#### 🛰️ تفاصيل الاستشعار والقراءات الحية:
-${desc}
-
----
-#### ⚖️ مسار الإجراء البلدي المعتمد (منصة بلدي):
-${rec}
-
-*هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ.*`
-          : `### 🚨 Geospatial Intelligence Briefing
-**Location:** ${districtName} District (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
-**Priority Level:** ${alert.severity.toUpperCase()} (Immediate Dispatch)  
-**AI Detection Confidence:** ${(alert.confidence * 100).toFixed(0)}% | **Telemetry:** ${alert.time}
-
----
-#### 🛰️ Sensor & Satellite Telemetry:
-${desc}
-
----
-#### ⚖️ Recommended Regulatory Action:
-${rec}
-
-*This is decision-support intelligence; verify in the field before final enforcement.*`;
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `u-${Date.now()}`,
-          role: "user",
-          content: userPrompt,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-        {
-          id: `a-${Date.now() + 1}`,
-          role: "assistant",
-          content: aiText,
-          chart: alert.chart,
-          alertRef: alert,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-      ]);
+      handleSendMessage(undefined, userPrompt);
     },
     [lang]
   );
@@ -1233,263 +1203,59 @@ ${rec}
     source.setData({ type: "FeatureCollection", features });
   }, [drawPoints]);
 
-  // Intelligent Local Geospatial & Widget Knowledge Resolver
-  const resolveGeospatialQuery = (
-    q: string,
-    l: "ar" | "en"
-  ): {
-    reply: string;
-    chart: ChartSpec;
-    alertRef?: MapAlert | null;
+  // Match location coordinates for camera flyTo
+  const findMapTargetLocation = (q: string): {
     targetCoord?: { lon: number; lat: number; zoom: number };
+    alertRef?: MapAlert | null;
   } | null => {
     const lower = q.toLowerCase();
 
-    // 1. Weather / Atmospheric / Air Quality Widget Query
-    if (
-      lower.includes("weather") ||
-      lower.includes("temp") ||
-      lower.includes("aqi") ||
-      lower.includes("air quality") ||
-      lower.includes("atmospheric") ||
-      lower.includes("طقس") ||
-      lower.includes("حرارة") ||
-      lower.includes("هواء") ||
-      lower.includes("بيئة") ||
-      lower.includes("جو")
-    ) {
-      const reply =
-        l === "ar"
-          ? `### 🌤️ تقرير الاستشعار الجوي والبيئي لمنطقة الرياض
-**محطة الرصد المركزية:** محطة الاستشعار البيئي AP-01 (حوض الرياض)  
-**درجة الحرارة السطحية:** 35° مئوية (مؤشر الإحساس 37° م)  
-**سرعة واتجاه الرياح:** 18 كم/س (شمالية غربية NW) مع هبات نشطة تصل إلى 24 كم/س  
-**مؤشر جودة الهواء (AQI):** 74 (معتدل) | **تركيز PM2.5:** 22 ميكروغرام/م³  
-**حالة القمر الصناعي:** مستشعر Sentinel-2 متزامن بنجاح مع شبكة الاستشعار الأرضية.
-
----
-#### 🛰️ التحليل الجيومكاني للجزر الحرارية:
-تظهر خرائط الأشعة تحت الحمراء تراكماً في بؤر الجزر الحرارية (UHI) بالمنطقة الصناعية الثانية (+6° درجات مئوية مقارنة بالمناطق الشمالية ووادي حنيفة). يوصى بتكثيف التشجير الحضري وتشغيل رذاذ تلطيف الأجواء.`
-          : `### 🌤️ Atmospheric & Environmental Telemetry Report
-**Monitoring Station:** Central Environmental Node AP-01 (Riyadh Basin)  
-**Surface Temperature:** 35°C (Heat Index feels like 37°C)  
-**Wind Vector:** 18 km/h NW (Peak localized gusts up to 24 km/h)  
-**Air Quality Index (AQI):** 74 (Moderate) | **PM2.5:** 22 µg/m³  
-**Satellite Earth Observation:** Sentinel-2 multispectral pass nominal and active.
-
----
-#### 🛰️ Urban Heat Island (UHI) Telemetry:
-Thermal infrared radiometry identifies localized heat island clustering in South Industrial District (+6°C variance relative to northern residential zones and the Wadi Hanifa ecological corridor). Urban greening canopy expansion recommended.`;
-
-      return {
-        reply,
-        chart: {
-          type: "line",
-          title: "24-Hour Temperature (°C) & AQI Trend",
-          titleAr: "قراءات الحرارة ومؤشر جودة الهواء (24 ساعة)",
-          unit: "°C / AQI",
-          data: [
-            { name: "00:00", value: 27 },
-            { name: "04:00", value: 25 },
-            { name: "08:00", value: 31 },
-            { name: "12:00", value: 38 },
-            { name: "16:00", value: 35 },
-            { name: "20:00", value: 30 },
-          ],
-        },
-        targetCoord: { lon: RIYADH_CENTER.lon, lat: RIYADH_CENTER.lat, zoom: 12 },
-      };
-    }
-
-    // 2. Drone / UAV Patrol Fleet Widget Query
-    if (
-      lower.includes("drone") ||
-      lower.includes("uav") ||
-      lower.includes("patrol") ||
-      lower.includes("fleet") ||
-      lower.includes("aerial") ||
-      lower.includes("طائر") ||
-      lower.includes("مسير") ||
-      lower.includes("درون") ||
-      lower.includes("استطلاع")
-    ) {
-      const reply =
-        l === "ar"
-          ? `### 🛸 تقرير عمليات أسطول الاستطلاع الجوي المسير (UAV Fleet)
-**الأسراب الجوية العاملة:** 3 طائرات بدون طيار ذاتية القيادة بنظام RTK-GPS عالي الدقة:  
-- **الوحدة Alpha-1:** تحليق مستمر فوق حي الملقا والعليا (رصد التعديات وارتفاعات المباني).  
-- **الوحدة Bravo-3:** مسح حراري بالأشعة تحت الحمراء فوق المدينة الصناعية الثانية (رصد الانبعاثات والتوهج).  
-- **الوحدة Delta-2:** رصد هيدرولوجي على طول مجرى وادي حنيفة وسد وادي لبن.  
-**إجمالي التغطية الجوية اليومية:** 52 كم² | **متوسط زمن التحقق الجوي:** 8.5 دقيقة.
-
----
-#### 🎯 نتائج الرصد الذاتي للأسراب (خلال 24 ساعة):
-تم توثيق 33 حالة ميدانية شملت تعديات على خطوط التنظيم وحفريات غير مصرح بها وتفريغ مخلفات.`
-          : `### 🛸 Autonomous UAV Aerial Patrol Fleet Operations
-**Active Airborne Sorties:** 3 High-Endurance Municipal Drones with RTK-GPS & Optical Zoom:  
-- **Unit Alpha-1:** Orbiting Al Malqa & Olaya Corridor (Right-of-Way & building heights).  
-- **Unit Bravo-3:** Thermal FLIR sweep across South Industrial Zone (flare & emissions scan).  
-- **Unit Delta-2:** Hydrological sensor tracking along Wadi Hanifa drainage basin.  
-**Total Aerial Patrol Area:** 52 km² | **Average Incident Verification Time:** 8.5 minutes.
-
----
-#### 🎯 24-Hour Autonomous Detections:
-33 actionable incidents documented including right-of-way breaches, unpermitted digging, and illegal commercial dumping.`;
-
-      return {
-        reply,
-        chart: {
-          type: "bar",
-          title: "UAV Aerial Detections by Category (Past 24h)",
-          titleAr: "رصد المسيرات الجوية حسب نوع المخالفة (خلال 24 ساعة)",
-          unit: "Incidents",
-          data: [
-            { name: "ROW Encroach", value: 14 },
-            { name: "Illegal Excavation", value: 9 },
-            { name: "Waste Dumping", value: 6 },
-            { name: "Thermal Anomalies", value: 4 },
-          ],
-        },
-        targetCoord: { lon: 46.685, lat: 24.75, zoom: 13.5 },
-      };
-    }
-
-    // 3. Overall Risk Summary / All 12 Alerts
-    if (
-      lower.includes("summary") ||
-      lower.includes("all alert") ||
-      lower.includes("overview") ||
-      lower.includes("risk") ||
-      lower.includes("kpi") ||
-      lower.includes("ملخص") ||
-      lower.includes("تنبيهات") ||
-      lower.includes("تقرير") ||
-      lower.includes("شامل") ||
-      lower.includes("كل التنبيهات")
-    ) {
-      const reply =
-        l === "ar"
-          ? `### 📊 الإحاطة التنفيذية الشاملة لمنظومة التنبيهات بالرياض
-**إجمالي الحوادث والتنبيهات النشطة:** 12 موقعاً خاضعاً للرقابة المستمرة عبر خريطة المنصة:  
-- 🔴 **التنبيهات الحرجة (4):**  
-  1. تجمع مياه وسيول بحي الشميسي (48 سم).  
-  2. شذوذ حراري بالمدينة الصناعية الجنوبية (84° م).  
-  3. هبوط أرضي وتغلغل مياه بنطاق الدرعية التاريخية (18 ملم).  
-  4. تفريغ نفايات وبوليمرات غير مرخصة بالعزيزية (420 طن).  
-  5. اختراق سكة قطار الرياض الخط الثالث بالبطحاء (1.8 متر).  
-- 🟠 **التنبيهات التنظيمية (5):** حفريات العليا، تعدي الملقا، هبوط الدائري، غبار المطار، محول كافد.  
-- 🔵 **مؤشرات البنية التحتية (3):** فقدان غطاء الملك فهد، اهتزاز جسر برج المملكة، وتدفقات الصرف.
-
----
-#### ⚖️ الأولويات الميدانية الموصى بها:
-توجيه الفرق الرقابية الفورية إلى **الدرعية** و**العزيزية** و**البطحاء** والتنسيق مع غرفة عمليات أمانة منطقة الرياض.`
-          : `### 📊 Executive Geospatial Risk Briefing for Riyadh Municipality
-**Total Active Incidents:** 12 High-Priority Locations Under Continuous Observation across the Map:  
-- 🔴 **Critical Hazards (4):**  
-  1. Shemaysi Flood standing water (48 cm).  
-  2. South Industrial flare heat spike (84°C).  
-  3. Diriyah historical ground subsidence & water seepage (18 mm).  
-  4. Aziziyah unpermitted industrial dumping (420 tons).  
-  5. Metro Line 3 high-voltage rail perimeter intrusion (1.8 m).  
-- 🟠 **Regulatory Warnings (5):** Olaya unpermitted excavation, Malqa ROW setback, Ring Road rutting, Airport PM10 dust surge, KAFD transformer overload.  
-- 🔵 **Infrastructure Telemetry (3):** Canopy health index, Kingdom Tower bridge vibration, municipal flow rates.
-
----
-#### ⚖️ Immediate Operational Directives:
-Priority field units dispatched to **Historical Diriyah**, **Al Aziziyah**, and **Al Batha Metro Corridor**. Cross-referenced with MOMRAH Balady enforcement protocols.`;
-
-      return {
-        reply,
-        chart: {
-          type: "pie",
-          title: "Active Municipal Incidents by Severity (Total 12)",
-          titleAr: "توزيع حوادث الرياض الـ 12 حسب الخطورة",
-          data: [
-            { name: "Critical Hazards", value: 4 },
-            { name: "Regulatory Warnings", value: 5 },
-            { name: "Infrastructure Info", value: 3 },
-          ],
-        },
-        targetCoord: { lon: RIYADH_CENTER.lon, lat: RIYADH_CENTER.lat, zoom: 11.5 },
-      };
-    }
-
-    // 4. Check for each of the 12 alerts
+    // 1. Check for specific live alerts
     const alertKeywords: Record<string, string[]> = {
-      "alert-007": ["sinkhole", "diriyah", "subsidence", "seepage", "groundwater", "هبوط", "درعية", "مياه جوفية", "007"],
-      "alert-008": ["dust", "airport", "aviation", "pm10", "مطار", "غبار", "أتربة", "008"],
-      "alert-009": ["substation", "transformer", "grid", "power", "kafd", "محطة", "محول", "كهرباء", "طاقة", "009"],
-      "alert-010": ["waste", "dumping", "landfill", "aziziyah", "debris", "نفايات", "مخلفات", "عزيزية", "ردم", "010"],
-      "alert-011": ["metro", "track", "rail", "train", "batha", "intrusion", "مترو", "قطار", "سكة", "بطحاء", "011"],
-      "alert-012": ["kingdom", "vibration", "sky bridge", "structural", "shear", "مملكة", "جسر", "اهتزاز", "إنشائي", "012"],
-      "alert-003": ["flood", "water", "drainage", "shemaysi", "سيول", "مياه", "غرق", "شميسي", "003"],
-      "alert-005": ["excavation", "digging", "unauthorized", "olaya", "حفر", "عليا", "إنشائي", "005"],
-      "alert-004": ["encroachment", "row", "boundary", "setback", "malqa", "تعدي", "ملقا", "ارتداد", "004"],
-      "alert-002": ["thermal", "heat", "fire", "flare", "industrial", "حراري", "شذوذ", "صناعية", "002"],
-      "alert-006": ["traffic", "rutting", "asphalt", "ring road", "مرور", "دائري", "إسفلت", "006"],
-      "alert-001": ["vegetation", "trees", "green", "canopy", "park", "حديقة", "غطاء نباتي", "أشجار", "001"],
+      "alert-007": ["sinkhole", "diriyah", "subsidence", "seepage", "درعية", "007"],
+      "alert-008": ["dust", "airport", "aviation", "pm10", "مطار", "غبار", "008"],
+      "alert-009": ["substation", "transformer", "kafd", "كافد", "محول", "009"],
+      "alert-010": ["waste", "dumping", "aziziyah", "عزيزية", "مخلفات", "010"],
+      "alert-011": ["metro", "track", "rail", "batha", "بطحاء", "مترو", "011"],
+      "alert-012": ["kingdom", "vibration", "sky bridge", "مملكة", "012"],
+      "alert-003": ["flood", "water", "shemaysi", "شميسي", "سيول", "003"],
+      "alert-005": ["excavation", "olaya", "عليا", "حفر", "005"],
+      "alert-004": ["encroachment", "row", "malqa", "ملقا", "تعدي", "004"],
+      "alert-002": ["thermal", "heat", "industrial", "صناعية", "002"],
+      "alert-006": ["traffic", "ring road", "دائري", "006"],
+      "alert-001": ["vegetation", "canopy", "park", "حديقة", "أشجار", "001"],
     };
 
     for (const [alertId, keywords] of Object.entries(alertKeywords)) {
       if (keywords.some((k) => lower.includes(k))) {
         const alert = LIVE_ALERTS.find((a) => a.id === alertId);
         if (alert) {
-          const alertName = l === "ar" ? alert.titleAr : alert.title;
-          const districtName = l === "ar" ? alert.districtAr : alert.district;
-          const desc = l === "ar" ? alert.descriptionAr : alert.description;
-          const rec = l === "ar" ? alert.recommendationAr : alert.recommendation;
-
-          const reply =
-            l === "ar"
-              ? `### 🚨 تحليل الذكاء الجيومكاني الميداني
-**الموقع:** حي ${districtName} (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
-**درجة الأولوية:** ${
-                  alert.severity === "critical"
-                    ? "🔴 حرج للغاية (فوري)"
-                    : alert.severity === "warning"
-                      ? "🟠 تحذير تنظيمي"
-                      : "🔵 إشعار بنية تحتية"
-                }  
-**موثوقية الذكاء الاصطناعي:** ${(alert.confidence * 100).toFixed(0)}% | **التوقيت:** ${alert.time}
-
----
-#### 🛰️ تفاصيل الاستشعار والقراءات الحية:
-${desc}
-
----
-#### ⚖️ مسار الإجراء البلدي المعتمد (منصة بلدي):
-${rec}
-
-*هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ.*`
-              : `### 🚨 Geospatial Intelligence Briefing
-**Location:** ${districtName} District (${alert.lon.toFixed(4)}° E, ${alert.lat.toFixed(4)}° N)  
-**Priority Level:** ${alert.severity.toUpperCase()} (Dispatch Standard)  
-**AI Detection Confidence:** ${(alert.confidence * 100).toFixed(0)}% | **Telemetry:** ${alert.time}
-
----
-#### 🛰️ Sensor & Satellite Telemetry:
-${desc}
-
----
-#### ⚖️ Recommended Regulatory Action:
-${rec}
-
-*This is decision-support intelligence; verify in the field before final enforcement.*`;
-
           return {
-            reply,
-            chart: alert.chart,
-            alertRef: alert,
             targetCoord: { lon: alert.lon, lat: alert.lat, zoom: 15.5 },
+            alertRef: alert,
           };
         }
       }
     }
 
+    // 2. Weather / Environmental station
+    if (lower.includes("weather") || lower.includes("aqi") || lower.includes("طقس") || lower.includes("بيئة")) {
+      return {
+        targetCoord: { lon: RIYADH_CENTER.lon, lat: RIYADH_CENTER.lat, zoom: 12 },
+      };
+    }
+
+    // 3. Drone fleet
+    if (lower.includes("drone") || lower.includes("uav") || lower.includes("درون") || lower.includes("مسير")) {
+      return {
+        targetCoord: { lon: 46.685, lat: 24.75, zoom: 13.5 },
+      };
+    }
+
     return null;
   };
 
-  // Handle Chatbot User Query
+  // Handle Chatbot User Query via Mistral AI (100% Dynamic & Intelligent)
   const handleSendMessage = async (e?: React.FormEvent, customPrompt?: string) => {
     if (e) e.preventDefault();
     const query = customPrompt || chatInput.trim();
@@ -1507,36 +1273,23 @@ ${rec}
 
     setMessages((prev) => [...prev, newMsg]);
 
-    // Check intelligent local knowledge resolver first (immediate with accurate chart & camera pan)
-    const localMatch = resolveGeospatialQuery(query, lang);
-    if (localMatch) {
-      if (localMatch.alertRef) {
-        setSelectedAlert(localMatch.alertRef);
+    // Check if query refers to a location on the map and smoothly pan there
+    const targetLoc = findMapTargetLocation(query);
+    if (targetLoc) {
+      if (targetLoc.alertRef) {
+        setSelectedAlert(targetLoc.alertRef);
       }
-      if (localMatch.targetCoord && mapRef.current) {
+      if (targetLoc.targetCoord && mapRef.current) {
         mapRef.current.flyTo({
-          center: [localMatch.targetCoord.lon, localMatch.targetCoord.lat],
-          zoom: localMatch.targetCoord.zoom,
+          center: [targetLoc.targetCoord.lon, targetLoc.targetCoord.lat],
+          zoom: targetLoc.targetCoord.zoom,
           duration: 1200,
           essential: true,
         });
       }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `a-${Date.now() + 1}`,
-          role: "assistant",
-          content: localMatch.reply,
-          chart: localMatch.chart,
-          alertRef: localMatch.alertRef,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-      ]);
-      return;
     }
 
-    // Otherwise, query LLM API with telemetry context
+    // Query Mistral AI Dynamically!
     setIsChatLoading(true);
 
     try {
@@ -1550,6 +1303,11 @@ ${rec}
           })),
           lang,
           visualize: true,
+          mapContext: {
+            selectedAlertId: selectedAlert?.id || targetLoc?.alertRef?.id,
+            center: mapRef.current ? [mapRef.current.getCenter().lng, mapRef.current.getCenter().lat] : undefined,
+            zoom: mapRef.current ? mapRef.current.getZoom() : undefined,
+          },
         }),
       });
 
@@ -1558,73 +1316,30 @@ ${rec}
       }
 
       const data = await res.json();
-      let detectedChart: ChartSpec | null = data.chart || null;
-
-      // Smart chart generation if API didn't return one
-      if (!detectedChart) {
-        const lower = query.toLowerCase();
-        if (lower.includes("alert") || lower.includes("summary") || lower.includes("تنبيه")) {
-          detectedChart = {
-            type: "bar",
-            title: "Live Alerts Breakdown by Severity",
-            titleAr: "توزيع التنبيهات الحية حسب الخطورة",
-            data: [
-              { name: "Critical", value: 4 },
-              { name: "Warning", value: 5 },
-              { name: "Info", value: 3 },
-            ],
-          };
-        } else if (lower.includes("flood") || lower.includes("water") || lower.includes("سيول")) {
-          detectedChart = {
-            type: "line",
-            title: "Sensor Flood Depth Accumulation (cm)",
-            titleAr: "معدل تجمع مياه الأمطار (سم)",
-            data: [
-              { name: "03:00", value: 4 },
-              { name: "05:00", value: 18 },
-              { name: "07:00", value: 35 },
-              { name: "08:15", value: 48 },
-            ],
-          };
-        }
-      }
+      const detectedChart: ChartSpec | null = data.chart || targetLoc?.alertRef?.chart || null;
 
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: data.reply || (lang === "ar" ? "تم استلام الطلب الجيومكاني." : "Geospatial telemetry processed."),
+          content: data.reply || (lang === "ar" ? "تمت معالجة الاستعلام الجيومكاني بنجاح." : "Geospatial query processed."),
           chart: detectedChart,
+          alertRef: targetLoc?.alertRef || null,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
     } catch {
-      // Smart Fallback with interactive chart
-      const fallbackReply =
-        lang === "ar"
-          ? `### 🛰️ تقرير استعلام جيومكاني فوري
-تمت مضاهاة الاستعلام مع قاعدة بيانات الرصد الميداني لمدينة الرياض (12 تنبيهاً نشطاً). يوصى بمتابعة التنبيهات الحرجة في **حي الشميسي** و**الدرعية** و**العزيزية** واتخاذ الإجراءات الوقائية.`
-          : `### 🛰️ Real-Time Geospatial Intelligence Report
-Query reconciled with active telemetry for Riyadh across 12 live incidents. Priority enforcement recommended for **Ash Shemaysi**, **Historical Diriyah**, and **Al Aziziyah** corridors.`;
-
+      // Natural Fallback if API is unreachable
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: fallbackReply,
-          chart: {
-            type: "pie",
-            title: "District Risk Index Distribution",
-            titleAr: "مؤشر المخاطر حسب الأحياء",
-            data: [
-              { name: "Shemaysi (Flood)", value: 35 },
-              { name: "Diriyah (Sinkhole)", value: 30 },
-              { name: "Aziziyah (Waste)", value: 20 },
-              { name: "Olaya (Excavation)", value: 15 },
-            ],
-          },
+          content:
+            lang === "ar"
+              ? "تعذر الاتصال بخادم الذكاء الاصطناعي مؤقتاً. يرجى التأكد من مفتاح Mistral API أو الاتصال بالشبكة."
+              : "Unable to reach the Mistral AI service temporarily. Please verify your connection or API key.",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -2585,18 +2300,90 @@ Query reconciled with active telemetry for Riyadh across 12 live incidents. Prio
               {showPromptChips && (
                 <div className="px-3 pb-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
                   {[
-                    { label: "🕳️ Diriyah Subsidence", prompt: "Explain Diriyah historical ground subsidence and subterranean seepage alert with chart." },
-                    { label: "🌫️ Airport PM10 Dust", prompt: "Explain King Khalid Airport dust particulate PM10 surge and air quality impact." },
-                    { label: "⚡ KAFD Overload", prompt: "Analyze KAFD main electrical substation transformer thermal overload." },
-                    { label: "🚛 Aziziyah Waste", prompt: "Provide briefing on unauthorized industrial waste dumping in Al Aziziyah." },
-                    { label: "🚇 Metro Track", prompt: "Explain Riyadh Metro Line 3 security perimeter intrusion in Al Batha." },
-                    { label: "🏢 Kingdom Tower", prompt: "Analyze Sky Bridge dynamic vibration and wind shear telemetry." },
-                    { label: "🚨 Shemaysi Flood", prompt: "Explain Shemaysi flood alert with water accumulation telemetry." },
-                    { label: "🏗️ Olaya Excavation", prompt: "Analyze unauthorized excavation in Al Olaya and show volume chart." },
-                    { label: "🔥 Industrial Heat", prompt: "Show thermal sensor temperature anomaly trend for South Industrial District." },
-                    { label: "🛸 Drone Fleet", prompt: "Explain autonomous municipal drone fleet operations, coverage, and detections with chart." },
-                    { label: "🌤️ Weather & AQI", prompt: "Explain Riyadh atmospheric telemetry, weather station sensors, and AQI trend." },
-                    { label: "📊 Overall Risk", prompt: "Explain overall city risk and summarize all active alerts in Riyadh with visualization." },
+                    {
+                      label: lang === "ar" ? "🕳️ هبوط الدرعية" : "🕳️ Diriyah Subsidence",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح تنبيه الهبوط الأرضي ورادار InSAR بنطاق الدرعية التاريخية مع رسم بياني."
+                          : "Explain Diriyah historical ground subsidence and subterranean seepage alert with chart.",
+                    },
+                    {
+                      label: lang === "ar" ? "🌫️ غبار المطار" : "🌫️ Airport PM10 Dust",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح ارتفاع تركيز الجسيمات الدقيقة PM10 بمطار الملك خالد وتأثيره على جودة الهواء."
+                          : "Explain King Khalid Airport dust particulate PM10 surge and air quality impact.",
+                    },
+                    {
+                      label: lang === "ar" ? "⚡ حرارة كافد" : "⚡ KAFD Overload",
+                      prompt:
+                        lang === "ar"
+                          ? "حلل الحمل الحراري الزائد على محولات محطة كافد الرئيسية."
+                          : "Analyze KAFD main electrical substation transformer thermal overload.",
+                    },
+                    {
+                      label: lang === "ar" ? "🚛 نفايات العزيزية" : "🚛 Aziziyah Waste",
+                      prompt:
+                        lang === "ar"
+                          ? "قدم إيجازاً عن تفريغ النفايات الصناعية غير المرخصة بحي العزيزية."
+                          : "Provide briefing on unauthorized industrial waste dumping in Al Aziziyah.",
+                    },
+                    {
+                      label: lang === "ar" ? "🚇 مسار المترو" : "🚇 Metro Track",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح اختراق المحيط الأمني لمسار قطار الرياض الخط 3 بالبطحاء."
+                          : "Explain Riyadh Metro Line 3 security perimeter intrusion in Al Batha.",
+                    },
+                    {
+                      label: lang === "ar" ? "🏢 برج المملكة" : "🏢 Kingdom Tower",
+                      prompt:
+                        lang === "ar"
+                          ? "حلل قراءات الاهتزاز وقص الرياح بجسر المشاهدة المعلق ببرج المملكة."
+                          : "Analyze Sky Bridge dynamic vibration and wind shear telemetry.",
+                    },
+                    {
+                      label: lang === "ar" ? "🚨 سيول الشميسي" : "🚨 Shemaysi Flood",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح تنبيه سيول الشميسي وتجمع المياه وقراءات الحساسات الهيدرولوجية."
+                          : "Explain Shemaysi flood alert with water accumulation telemetry.",
+                    },
+                    {
+                      label: lang === "ar" ? "🏗️ حفريات العليا" : "🏗️ Olaya Excavation",
+                      prompt:
+                        lang === "ar"
+                          ? "حلل الحفريات غير المرخصة في حي العليا واعرض رسم بياني للحجم."
+                          : "Analyze unauthorized excavation in Al Olaya and show volume chart.",
+                    },
+                    {
+                      label: lang === "ar" ? "🔥 حرارة الصناعية" : "🔥 Industrial Heat",
+                      prompt:
+                        lang === "ar"
+                          ? "اعرض قراءات الشذوذ الحراري للمدينة الصناعية الجنوبية."
+                          : "Show thermal sensor temperature anomaly trend for South Industrial District.",
+                    },
+                    {
+                      label: lang === "ar" ? "🛸 أسراب الدرون" : "🛸 Drone Fleet",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح عمليات وتغطية أسراب الطائرات المسيرة البلدية والاكتشافات مع رسم بياني."
+                          : "Explain autonomous municipal drone fleet operations, coverage, and detections with chart.",
+                    },
+                    {
+                      label: lang === "ar" ? "🌤️ الطقس والهواء" : "🌤️ Weather & AQI",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح قياسات الطقس والرياح ومؤشر جودة الهواء لمدينة الرياض."
+                          : "Explain Riyadh atmospheric telemetry, weather station sensors, and AQI trend.",
+                    },
+                    {
+                      label: lang === "ar" ? "📊 تقييم المخاطر" : "📊 Overall Risk",
+                      prompt:
+                        lang === "ar"
+                          ? "اشرح تقييم المخاطر الشامل ولخص كافة التنبيهات النشطة بالرياض مع رسم بياني."
+                          : "Explain overall city risk and summarize all active alerts in Riyadh with visualization.",
+                    },
                   ].map((s) => (
                     <button
                       key={s.label}

@@ -31,15 +31,15 @@ export function ModuleHeader({
           </div>
         )}
         <div>
-          <div className="flex items-center gap-1.5 text-[0.7rem] text-muted-foreground font-medium mb-0.5">
-            <span>GeoWise</span>
-            <ChevronRight className="size-3" />
-            <span className="font-mono">{moduleId}</span>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold mb-1">
+            <span className="hover:text-foreground transition-colors">GeoWise</span>
+            <ChevronRight className="size-3 text-muted-foreground/60 rtl:rotate-180" />
+            <span className="font-mono px-1.5 py-0.5 rounded bg-muted text-[0.7rem] text-foreground font-bold">{moduleId}</span>
           </div>
-          <h1 className="text-lg font-semibold leading-tight">
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground leading-tight">
             {t(titleKey as never)}
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5 max-w-2xl">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-3xl leading-relaxed font-normal">
             {t(subtitleKey as never)}
           </p>
         </div>

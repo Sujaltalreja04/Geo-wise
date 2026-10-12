@@ -1005,5 +1005,574 @@ export const DASHBOARD_KPIS = {
   ],
 };
 
+// ───────── Map Real-Time Live Alerts (12 Active Riyadh Incidents) ─────────
+export interface MapAlertItem {
+  id: string;
+  title: string;
+  titleAr: string;
+  category: string;
+  severity: "critical" | "warning" | "info";
+  lon: number;
+  lat: number;
+  district: string;
+  districtAr: string;
+  time: string;
+  confidence: number;
+  description: string;
+  descriptionAr: string;
+  recommendation: string;
+  recommendationAr: string;
+}
+
+export const MAP_LIVE_ALERTS: MapAlertItem[] = [
+  {
+    id: "alert-003",
+    title: "Critical Flash Flood & Standing Water Hazard",
+    titleAr: "تجمع مياه سطحي وخطر سيول حرج",
+    category: "flood",
+    severity: "critical",
+    lon: 46.656,
+    lat: 24.641,
+    district: "Ash Shemaysi",
+    districtAr: "الشميسي",
+    time: "15m ago",
+    confidence: 0.98,
+    description: "Hydrological surface sensor network and radar imagery identified severe standing water depth exceeding 48cm blocking the Shemaysi logistical service yard.",
+    descriptionAr: "رصدت شبكة الحساسات الهيدرولوجية ورادار الأمطار تجمع مياه بارتفاع يتجاوز 48 سم يعيق ساحة الخدمات اللوجستية بحي الشميسي.",
+    recommendation: "Activate municipal emergency drainage units and notify the Civil Defense operations room.",
+    recommendationAr: "تفعيل صهاريج ومضخات الطوارئ البلدية وإشعار غرفة عمليات الدفاع المدني فوراً.",
+  },
+  {
+    id: "alert-005",
+    title: "Unauthorized Earthwork & Construction",
+    titleAr: "حفريات غير مصرح بها وأعمال إنشائية",
+    category: "construction",
+    severity: "warning",
+    lon: 46.688,
+    lat: 24.732,
+    district: "Al Olaya",
+    districtAr: "العليا",
+    time: "28m ago",
+    confidence: 0.94,
+    description: "High-resolution satellite imagery detected unauthorized earthworks and heavy machinery operating without active MOMRAH municipal permit.",
+    descriptionAr: "رصدت صور الأقمار الصناعية عالية الدقة أعمال حفر غير مصرح بها ومعدات بناء تعمل دون رخصة بلدية سارية من أمانة الرياض.",
+    recommendation: "Dispatch field inspection team from Al Olaya municipality branch and issue an electronic stop-work order.",
+    recommendationAr: "توجيه فرقة تفتيش ميدانية من بلدية العليا وإصدار إشعار إيقاف أعمال إلكتروني فوري.",
+  },
+  {
+    id: "alert-004",
+    title: "Right-of-Way (ROW) Boundary Encroachment",
+    titleAr: "تعدٍ على خط تنظيم وحرم الطريق العام",
+    category: "encroachment",
+    severity: "warning",
+    lon: 46.642,
+    lat: 24.802,
+    district: "Al Malqa",
+    districtAr: "الملقا",
+    time: "42m ago",
+    confidence: 0.84,
+    description: "Perimeter fencing and storage containers erected 3.2 meters past the approved property line into the public right-of-way.",
+    descriptionAr: "إقامة سياج مؤقت وحاويات تخزين تتجاوز خط التنظيم المعتمد بـ 3.2 متر داخل حرم الطريق العام بممر الملقا التجاري.",
+    recommendation: "Issue 48-hour compliance violation via Balady platform and mandate physical setback.",
+    recommendationAr: "إصدار إشعار مخالفة بمهلة 48 ساعة عبر منصة بلدي وإلزام المالك بالارتداد الفوري.",
+  },
+  {
+    id: "alert-002",
+    title: "Severe Thermal Anomaly at Industrial Facility",
+    titleAr: "شذوذ حراري حرج بمنشأة صناعية",
+    category: "thermal",
+    severity: "critical",
+    lon: 46.72,
+    lat: 24.615,
+    district: "South Industrial District",
+    districtAr: "المدينة الصناعية الجنوبية",
+    time: "1h ago",
+    confidence: 0.96,
+    description: "MODIS & thermal infrared sensors recorded an anomalous surface heat spike of 84°C indicating unventilated flare or material combustion.",
+    descriptionAr: "رصدت الحساسات الحرارية بالأشعة تحت الحمراء ارتفاعاً حرارياً مفاجئاً إلى 84 درجة مئوية يشير إلى احتراق مواد غير منضبط.",
+    recommendation: "Dispatch MODON industrial safety patrol and cross-reference real-time atmospheric emissions data.",
+    recommendationAr: "إرسال دورية السلامة الصناعية من مدن والتحقق من قياسات الانبعاثات البيئية الفورية.",
+  },
+  {
+    id: "alert-006",
+    title: "Major Asphalt Rutting & Traffic Obstruction",
+    titleAr: "هبوط إسفلتي وحادث مروري بالطريق الدائري",
+    category: "traffic",
+    severity: "warning",
+    lon: 46.73,
+    lat: 24.79,
+    district: "Northern Ring Road (J3)",
+    districtAr: "الطريق الدائري الشمالي (مخرج 3)",
+    time: "2h ago",
+    confidence: 0.89,
+    description: "LiDAR road profiler detected 8.5cm pavement depression causing secondary lane obstruction and heavy localized traffic congestion.",
+    descriptionAr: "رصدت كاميرات المراقبة وتحليل الليزر هبوطاً إسفلتياً بعمق 8.5 سم تسبب في إغلاق مسار فرعي وتباطؤ حركة المرور.",
+    recommendation: "Dispatch rapid pavement repair contractor and coordinate traffic diversion with Riyadh Traffic Police.",
+    recommendationAr: "توجيه مقاول الصيانة السريعة والتنسيق مع مرور منطقة الرياض لتحويل مسار الحركة.",
+  },
+  {
+    id: "alert-001",
+    title: "Vegetation Canopy Loss in Public Sector",
+    titleAr: "فقدان غطاء نباتي بالحديقة العامة",
+    category: "vegetation",
+    severity: "info",
+    lon: 46.695,
+    lat: 24.73,
+    district: "King Fahd District Park",
+    districtAr: "حديقة حي الملك فهد",
+    time: "3h ago",
+    confidence: 0.77,
+    description: "Automated multispectral NDVI index dropped by 34% over a 1,200m² sector following an irrigation mainline valve rupture.",
+    descriptionAr: "انخفاض مؤشر الغطاء النباتي (NDVI) بنسبة 34% على مساحة 1200 م² نتيجة انقطاع في شبكة الري الآلية.",
+    recommendation: "Trigger maintenance ticket for Parks Directorate irrigation technician team.",
+    recommendationAr: "إصدار تذكرة صيانة لإدارة التشغيل والحدائق لإصلاح خطوط الري واستعادة المسطحات.",
+  },
+  {
+    id: "alert-007",
+    title: "Groundwater Seepage & Geotechnical Subsidence Hazard",
+    titleAr: "تغلغل مياه جوفية وخطر هبوط أرضي جيوتقني",
+    category: "sinkhole",
+    severity: "critical",
+    lon: 46.577,
+    lat: 24.735,
+    district: "Historical Diriyah Buffer",
+    districtAr: "نطاق الدرعية التاريخية",
+    time: "35m ago",
+    confidence: 0.95,
+    description: "Subsurface InSAR ground deformation radar and moisture probes detected 18mm localized subsidence and subterranean pooling threatening historical mudbrick structures.",
+    descriptionAr: "رصدت مجسات قياس الهبوط الراداري (InSAR) ورطوبة التربة هبوطاً موضعياً بمقدار 18 ملم يهدد استقرار الأساسات التراثية بالدرعية.",
+    recommendation: "Issue immediate structural preservation alert to Diriyah Gate Development Authority (DGDA) and deploy geotechnical grouting crew.",
+    recommendationAr: "إصدار تنبيه حماية إنشائية فوري لهيئة تطوير بوابة الدرعية وتوجيه فريق حقن التربة الهندسي.",
+  },
+  {
+    id: "alert-008",
+    title: "Airborne Particulate PM10 Dust Surge",
+    titleAr: "ارتفاع حاد في جسيمات الغبار العالقة PM10",
+    category: "airquality",
+    severity: "warning",
+    lon: 46.702,
+    lat: 24.954,
+    district: "Airport Aviation Corridor",
+    districtAr: "ممر مطار الملك خالد الدولي",
+    time: "50m ago",
+    confidence: 0.91,
+    description: "Optical LiDAR and air quality station AP-04 recorded PM10 particulate levels of 245 µg/m³ driven by northeastern winds and unpaved perimeter staging.",
+    descriptionAr: "سجلت محطة الرصد البيئي AP-04 تركيز غبار PM10 بلغ 245 ميكروغرام/م³ بسبب الرياح الشمالية ونشاط مشاريع لوجستية غير مرشوشة بالمياه.",
+    recommendation: "Mandate automated chemical dust suppressant sprayers on surrounding project contractors and issue aviation advisory.",
+    recommendationAr: "إلزام مقاولي المشاريع المحيطة بتشغيل أنظمة رش مثبتات الغبار وإصدار إشعار استباقي لإدارة المطار.",
+  },
+  {
+    id: "alert-009",
+    title: "Substation Transformer Thermal Overload",
+    titleAr: "إجهاد حراري بمحول محطة التوزيع الكهربائي",
+    category: "energy",
+    severity: "warning",
+    lon: 46.662,
+    lat: 24.768,
+    district: "KAFD Energy District",
+    districtAr: "مركز الملك عبدالله المالي (كافد)",
+    time: "1h 15m ago",
+    confidence: 0.93,
+    description: "SCADA telemetry and satellite thermal cameras identified a 92°C hotspot on Step-Down Transformer T-2 at KAFD Main Substation under 94% peak load.",
+    descriptionAr: "رصدت أنظمة سكادا والقمر الصناعي الحراري بؤرة ساخنة بحرارة 92 درجة مئوية على المحول T-2 بمحطة تحويل كافد تحت حمل استهلاك مرتفع.",
+    recommendation: "Coordinate load shedding with Saudi Electricity Company (SEC) and dispatch auxiliary mobile liquid nitrogen cooling unit.",
+    recommendationAr: "التنسيق مع مركز التحكم بالشركة السعودية للكهرباء لإعادة موازنة الحمل وتوجيه صهريج التبريد السريع للمحطة.",
+  },
+  {
+    id: "alert-010",
+    title: "Unpermitted Hazardous Waste Dumping Site",
+    titleAr: "موقع تفريغ مخلفات خطرة غير مرخص",
+    category: "waste",
+    severity: "critical",
+    lon: 46.775,
+    lat: 24.582,
+    district: "Al Aziziyah Logistics Perimeter",
+    districtAr: "محيط العزيزية اللوجستي",
+    time: "1h 40m ago",
+    confidence: 0.97,
+    description: "Drone surveillance imagery identified illegal commercial dump trucks discarding 420 tons of construction debris and petrochemical polymers on unzoned desert land.",
+    descriptionAr: "رصدت طائرات الاستطلاع المسيرة شاحنات تلقي 420 طناً من مخلفات الهدم وبوليمرات صناعية في أرض فضاء غير مخصصة جنوب الرياض.",
+    recommendation: "Issue automated Balady smart plate citations, notify Riyadh Environmental Police, and mandate immediate hazardous site remediation.",
+    recommendationAr: "إصدار مخالفات فورية عبر كاميرات الرصد الذكية لمركبات النقل وإشعار القوات الخاصة للأمن البيئي لتطهير الموقع.",
+  },
+  {
+    id: "alert-011",
+    title: "Riyadh Metro Line 3 Track Perimeter Intrusion",
+    titleAr: "اختراق المحيط الأمني لمسار قطار الرياض (الخط 3)",
+    category: "metro",
+    severity: "critical",
+    lon: 46.722,
+    lat: 24.646,
+    district: "Al Batha Central Transit",
+    districtAr: "مركز البطحاء للنقل العام",
+    time: "2h 10m ago",
+    confidence: 0.99,
+    description: "AI CCTV fence monitoring detected human breach and metal scaffolding encroaching within 1.8m of the 750V third-rail electrified metro track.",
+    descriptionAr: "رصدت كاميرات الذكاء الاصطناعي اختراقاً للمحيط الأمني وسقالة حديدية على مسافة 1.8 متر من سكة القطار الكهربائية عالية الجهد.",
+    recommendation: "Transmit automated slow-order (20 km/h) to approaching Trainset #308 and dispatch Royal Commission for Riyadh City (RCRC) security.",
+    recommendationAr: "إرسال أمر تهدئة آلي (20 كم/س) للقطار القادم رقم 308 وتوجيه دوريات أمن النقل التابعة للهيئة الملكية لمدينة الرياض.",
+  },
+  {
+    id: "alert-012",
+    title: "Sky Bridge Dynamic Vibration & Wind Shear Load",
+    titleAr: "اهتزازات ديناميكية وهبوب رياح بجسر المملكة المعلق",
+    category: "structural",
+    severity: "info",
+    lon: 46.6744,
+    lat: 24.7114,
+    district: "Al Olaya Commercial Axis",
+    districtAr: "محور العليا التجاري",
+    time: "2h 45m ago",
+    confidence: 0.88,
+    description: "Structural health fiber-optic accelerometers measured 1.42 Hz micro-vibrations during 54 km/h high-altitude gusts at the 300m Kingdom Tower Sky Bridge.",
+    descriptionAr: "سجلت حساسات الألياف الضوئية الإنشائية اهتزازات طفيفة بتردد 1.42 هرتز خلال هبات رياح علوية بلغت 54 كم/س بجسر برج المملكة.",
+    recommendation: "Automated tuned mass dampers (TMD) verified stabilizing properly; continue sensor logging without visitor capacity restrictions.",
+    recommendationAr: "التأكد من تشغيل مخمدات الكتلة الآلية (TMD) بنجاح والاستمرار في تسجيل البيانات دون الحاجة لإجراءات إخلاء.",
+  },
+];
+
+// ───────── Reports & Publishing Module Data ─────────
+export interface ReportItem {
+  id: string;
+  title: string;
+  titleAr: string;
+  type: "executive" | "inspection" | "environmental" | "audit" | "satellite";
+  typeLabel: string;
+  typeLabelAr: string;
+  classification: "public" | "restricted" | "confidential";
+  status: "draft" | "review" | "approved" | "published";
+  district: string;
+  districtAr: string;
+  author: string;
+  authorAr: string;
+  approver: string;
+  approverAr: string;
+  createdAt: string;
+  hijriDate: string;
+  gregorianDate: string;
+  summary: string;
+  summaryAr: string;
+  metrics: {
+    incidentsCovered: number;
+    aiConfidenceAvg: number;
+    areaCoveredKm2: number;
+    verifiedViolations: number;
+  };
+  keyFindings: string[];
+  keyFindingsAr: string[];
+  recommendations: string[];
+  recommendationsAr: string[];
+  signatureHash: string;
+  downloadsCount: number;
+  tags: string[];
+}
+
+export const REPORTS: ReportItem[] = [
+  {
+    id: "GW-REP-2026-0891",
+    title: "Executive Geospatial Risk & Incident Digest",
+    titleAr: "إحاطة المخاطر الجيومكانية والحوادث التنفيذية لمنطقة الرياض",
+    type: "executive",
+    typeLabel: "Executive Briefing",
+    typeLabelAr: "إحاطة تنفيذية",
+    classification: "confidential",
+    status: "published",
+    district: "Riyadh Metropolitan Basin",
+    districtAr: "حوض الرياض الحضري الشامل",
+    author: "Khalid Al-Otaibi",
+    authorAr: "خالد العتيبي",
+    approver: "H.E. Undersecretary for Urban Affairs",
+    approverAr: "معالي وكيل الوزارة للشؤون الحضرية",
+    createdAt: "2026-09-16T08:30:00Z",
+    hijriDate: "٢٥ ربيع الأول ١٤٤٧هـ",
+    gregorianDate: "16 September 2026",
+    summary:
+      "Comprehensive synthesis of 12 active incidents across the capital, prioritizing high-risk groundwater subsidence in Diriyah, standing water in Shemaysi, and unpermitted hazardous dumping in Al Aziziyah.",
+    summaryAr:
+      "ملخص تحليلي شامل لـ 12 حادثاً نشطاً بالعاصمة، مع إعطاء الأولوية القصوى للهبوط الأرضي بالدرعية، وتجمعات المياه بالشميسي، والتفريغ غير المرخص بالعزيزية.",
+    metrics: {
+      incidentsCovered: 12,
+      aiConfidenceAvg: 93,
+      areaCoveredKm2: 1840,
+      verifiedViolations: 8,
+    },
+    keyFindings: [
+      "InSAR radar confirms 18mm cumulative subsidence at Historical Diriyah buffer zone.",
+      "Shemaysi standing water ponding reached 48cm depth following localized runoff.",
+      "Drone patrol Unit Bravo-3 isolated 420 tons of hazardous polymer dumping in Al Aziziyah.",
+      "Overall municipal SLA compliance remains strong at 91% across active inspector dispatches.",
+    ],
+    keyFindingsAr: [
+      "رادار InSAR يؤكد هبوطاً تراكمياً بمقدار 18 ملم بنطاق حماية الدرعية التاريخية.",
+      "تجمع مياه الشميسي بلغ عمق 48 سم إثر الجريان السطحي الموضعي.",
+      "طائرة الاستطلاع Bravo-3 رصدت 420 طناً من النفايات البوليمرية بالعزيزية.",
+      "امتثال اتفاقيات مستوى الخدمة البلدية (SLA) مستقر عند 91% عبر البلاغات الميدانية.",
+    ],
+    recommendations: [
+      "Authorize emergency geotechnical grouting team deployment under DGDA coordination.",
+      "Maintain 24-hour pump deployment at Shemaysi logistics yard.",
+      "Issue automated commercial truck impound orders via Balady smart plate network.",
+    ],
+    recommendationsAr: [
+      "اعتماد تحريك فريق حقن التربة الجيوتقني العاجل بالتنسيق مع بوابة الدرعية.",
+      "إبقاء محطات الضخ المتنقلة بساحة الخدمات بالشميسي على مدار الساعة.",
+      "إصدار أوامر حجز الشاحنات المخالفة آلياً عبر شبكة قراءة اللوحات بمنصة بلدي.",
+    ],
+    signatureHash: "0x8F94B2C819E024F44A39D87E442B0299596E87834CBA1F9",
+    downloadsCount: 42,
+    tags: ["Executive", "Hazards", "DGDA", "High-Priority"],
+  },
+  {
+    id: "GW-REP-2026-0888",
+    title: "Ash Shemaysi Flash Flood & Drainage Infiltration Assessment",
+    titleAr: "تقرير تقييم السيول وتجمع المياه وحوض التصريف بحي الشميسي",
+    type: "environmental",
+    typeLabel: "Environmental Hazard",
+    typeLabelAr: "خطر بيئي",
+    classification: "restricted",
+    status: "approved",
+    district: "Ash Shemaysi",
+    districtAr: "حي الشميسي",
+    author: "Layla Al-Harbi",
+    authorAr: "ليلى الحربي",
+    approver: "Riyadh Civil Defense Directorate",
+    approverAr: "مديرية الدفاع المدني بمنطقة الرياض",
+    createdAt: "2026-09-15T14:20:00Z",
+    hijriDate: "٢٤ ربيع الأول ١٤٤٧هـ",
+    gregorianDate: "15 September 2026",
+    summary:
+      "Hydrological sensor data and radar precipitation cross-analysis documenting rainwater ponding, storm drain inlet capacity restrictions, and logistics terminal access blockage.",
+    summaryAr:
+      "تحليل مشترك لقراءات الحساسات الهيدرولوجية ورادار الأمطار يوثق تجمعات المياه واختناق مصائد التصريف وإعاقة مداخل المستودعات اللوجستية.",
+    metrics: {
+      incidentsCovered: 3,
+      aiConfidenceAvg: 98,
+      areaCoveredKm2: 14.2,
+      verifiedViolations: 2,
+    },
+    keyFindings: [
+      "Surface water reached 48cm depth at low-elevation culvert point CP-14.",
+      "Sediment buildup reduced intake capacity by 62% in southern collector mains.",
+      "Zero human casualties recorded; emergency service vehicles rerouted successfully.",
+    ],
+    keyFindingsAr: [
+      "منسوب المياه السطحية بلغ 48 سم عند نقطة المفيض المنخفضة CP-14.",
+      "تراكم الطمي خفض كفاءة مصائد التصريف بنسبة 62% بالمصبات الجنوبية.",
+      "لم تسجل أي خسائر بشرية؛ تم تحويل مركبات الطوارئ بنجاح.",
+    ],
+    recommendations: [
+      "Immediate vacuum excavation of sediment from 18 stormwater catch basins.",
+      "Install dual ultrasonic water-level telemetry sensors at intersection J-09.",
+    ],
+    recommendationsAr: [
+      "نزح الرواسب وتنظيف 18 فتحة تصريف فورياً عبر صهاريج الشفط الهيدروليكي.",
+      "تركيب مجسين بالموجات فوق الصوتية لقياس المنسوب عند تقاطع J-09.",
+    ],
+    signatureHash: "0x4A1C92EF301889C5D0774B8A613E99238D4F1288BCA5901",
+    downloadsCount: 19,
+    tags: ["Drainage", "Rainfall", "Emergency"],
+  },
+  {
+    id: "GW-REP-2026-0884",
+    title: "Historical Diriyah Geotechnical Subsidence & InSAR Audit",
+    titleAr: "تدقيق الهبوط الجيوتقني ورادار InSAR بنطاق الدرعية التاريخية",
+    type: "audit",
+    typeLabel: "Geotechnical Audit",
+    typeLabelAr: "تدقيق جيوتقني",
+    classification: "confidential",
+    status: "approved",
+    district: "Historical Diriyah Buffer",
+    districtAr: "نطاق الدرعية التاريخية",
+    author: "Fahad Al-Dossari",
+    authorAr: "فهد الدوسري",
+    approver: "Diriyah Gate Development Authority (DGDA)",
+    approverAr: "هيئة تطوير بوابة الدرعية",
+    createdAt: "2026-09-14T11:45:00Z",
+    hijriDate: "٢٣ ربيع الأول ١٤٤٧هـ",
+    gregorianDate: "14 September 2026",
+    summary:
+      "Interferometric Synthetic Aperture Radar (InSAR) time-series evaluation identifying subtle sub-centimeter ground deformation in proximity to heritage mudbrick architectural assets.",
+    summaryAr:
+      "تقييم السلاسل الزمنية للرادار التداخلي (InSAR) لرصد التشوهات الأرضية دون السنتيمترية بالقرب من مباني التراث الطيني القديمة.",
+    metrics: {
+      incidentsCovered: 1,
+      aiConfidenceAvg: 95,
+      areaCoveredKm2: 8.5,
+      verifiedViolations: 0,
+    },
+    keyFindings: [
+      "18mm localized vertical displacement identified across 4-month observation window.",
+      "Groundwater table fluctuations correlated directly with micro-subsidence phases.",
+      "Structural tilt sensors on historic watchtowers remain within safe tolerance margins (0.04°).",
+    ],
+    keyFindingsAr: [
+      "هبوط رأسي موضعي قدره 18 ملم رُصد خلال فترة مراقبة امتدت لـ 4 أشهر.",
+      "تذبذب منسوب المياه الجوفية ارتبط مباشرة بمراحل الهبوط الدقيق.",
+      "حساسات الميل بأبراج المراقبة التراثية لا تزال ضمن حدود الأمان (0.04°).",
+    ],
+    recommendations: [
+      "Deploy non-destructive micro-piling and low-pressure polyurethane grouting.",
+      "Establish continuous real-time fiber-optic strain monitoring on primary foundations.",
+    ],
+    recommendationsAr: [
+      "تنفيذ تدعيم دقيق وحقن بولي يوريثان منخفض الضغط لحماية الأساسات.",
+      "تركيب ألياف ضوئية لقياس الإجهاد اللحظي على الجدران الحاملة الرئيسية.",
+    ],
+    signatureHash: "0x7B298E1A0F944CDA630129B729352F94240AA172C9B9844",
+    downloadsCount: 31,
+    tags: ["InSAR", "Diriyah", "Heritage", "Structural"],
+  },
+  {
+    id: "GW-REP-2026-0879",
+    title: "Al Olaya & Al Malqa Right-of-Way Building Encroachment Dossier",
+    titleAr: "ملف مخالفات التعدي والارتدادات النظامية بحيي العليا والملقا",
+    type: "inspection",
+    typeLabel: "Field Inspection",
+    typeLabelAr: "تفتيش ميداني",
+    classification: "restricted",
+    status: "review",
+    district: "Al Olaya & Al Malqa",
+    districtAr: "حي العليا والملقا",
+    author: "Omar Al-Mutairi",
+    authorAr: "عمر المطيري",
+    approver: "Pending General Secretariat Approval",
+    approverAr: "بانتظار اعتماد الأمانة العامة",
+    createdAt: "2026-09-13T16:10:00Z",
+    hijriDate: "٢٢ ربيع الأول ١٤٤٧هـ",
+    gregorianDate: "13 September 2026",
+    summary:
+      "Satellite photogrammetry and field patrol documentation of unpermitted building line encroachments, unauthorized commercial storage yards, and perimeter fence violations.",
+    summaryAr:
+      "توثيق بالمسح التصويري الجوي والجولات الميدانية لتجاوزات خطوط التنظيم وساحات التخزين غير المرخصة وتعديات الأسوار على حرم الطريق.",
+    metrics: {
+      incidentsCovered: 5,
+      aiConfidenceAvg: 89,
+      areaCoveredKm2: 32.0,
+      verifiedViolations: 5,
+    },
+    keyFindings: [
+      "Al Malqa parcel #4811 fence encroaches 3.2m beyond approved masterplan boundary.",
+      "Al Olaya commercial site executing excavation without an active municipal excavation permit.",
+      "Total right-of-way area compromised exceeds 480 m² across 2 arterial corridors.",
+    ],
+    keyFindingsAr: [
+      "قطعة أرض الملقا 4811 تتجاوز خط التنظيم بـ 3.2 متر في حرم الشارع العام.",
+      "موقع تجاري بالعليا ينفذ حفريات دون رخصة حفر بلدية سارية.",
+      "إجمالي المساحة المتعدى عليها بحرم الطرق يتجاوز 480 م² بمحورين رئيسيين.",
+    ],
+    recommendations: [
+      "Issue 48-hour electronic compliance demand via Balady smart portal.",
+      "Schedule demolition of non-compliant temporary perimeter fencing by municipality team.",
+    ],
+    recommendationsAr: [
+      "إصدار إشعار تصحيح إلكتروني بمهلة 48 ساعة عبر بوابة بلدي.",
+      "جدولة إزالة الأسوار المخالفة بواسطة فرق الإزالة البلدية في حال عدم الامتثال.",
+    ],
+    signatureHash: "0x19934B876DF9001A837C34D916B89832104F5E667ACBD82",
+    downloadsCount: 14,
+    tags: ["Encroachment", "Zoning", "Balady"],
+  },
+  {
+    id: "GW-REP-2026-0872",
+    title: "South Industrial District FLIR Thermal Anomaly & Emissions Dossier",
+    titleAr: "ملف الشذوذ الحراري وانبعاثات المدينة الصناعية الثانية بالرياض",
+    type: "environmental",
+    typeLabel: "Thermal & Emissions",
+    typeLabelAr: "حراري وانبعاثات",
+    classification: "restricted",
+    status: "published",
+    district: "South Industrial Zone",
+    districtAr: "المدينة الصناعية الثانية (جنوب الرياض)",
+    author: "Noura Al-Shehri",
+    authorAr: "نورة الشهري",
+    approver: "Saudi Authority for Industrial Cities (MODON)",
+    approverAr: "الهيئة السعودية للمدن الصناعية (مدن)",
+    createdAt: "2026-09-11T09:00:00Z",
+    hijriDate: "٢٠ ربيع الأول ١٤٤٧هـ",
+    gregorianDate: "11 September 2026",
+    summary:
+      "Thermal infrared drone radiometry and Sentinel-3 thermal observation identifying anomalous 84°C heat signatures at chemical processing stacks.",
+    summaryAr:
+      "قياسات الأشعة تحت الحمراء بالمسيرات وقمر Sentinel-3 الحراري ترصد انبعاثات حرارية شاذة بلغت 84°م بمداخن مصانع بتروكيماوية.",
+    metrics: {
+      incidentsCovered: 4,
+      aiConfidenceAvg: 96,
+      areaCoveredKm2: 28.5,
+      verifiedViolations: 3,
+    },
+    keyFindings: [
+      "Thermal plume exceeds standard operating temperature thresholds by 26°C.",
+      "Particulate PM2.5 sensors downwind recorded elevated levels (48 µg/m³).",
+      "Factory automated scrubber systems were observed inactive during inspection timeframe.",
+    ],
+    keyFindingsAr: [
+      "الانبعاث الحراري تجاوز المعدل التشغيلي المعتمد بـ 26 درجة مئوية.",
+      "حساسات الجسيمات الدقيقة PM2.5 في اتجاه الرياح سجلت ارتفاعاً (48 ميكروغرام/م³).",
+      "فلاتر التنقية الآلية للمصنع كانت متوقفة أثناء فترة المسح الجوي.",
+    ],
+    recommendations: [
+      "Mandate immediate thermal stack calibration and report verification to MODON.",
+      "Impose environmental safety surcharge as prescribed by National Environmental Executive Regulations.",
+    ],
+    recommendationsAr: [
+      "إلزام المنشأة بمعايرة المداخن وتقديم تقرير تدقيق بيئي فوري لمدن.",
+      "تطبيق الغرامات المقررة باللائحة التنفيذية لنظام البيئة الوطني.",
+    ],
+    signatureHash: "0x5E814A9922B104F5E667ACBD8237C34D916B89832104F5E",
+    downloadsCount: 27,
+    tags: ["MODON", "Thermal", "Emissions", "Industrial"],
+  },
+  {
+    id: "GW-REP-2026-0865",
+    title: "Riyadh Metro Line 3 Transit Safety Perimeter Review",
+    titleAr: "مراجعة المحيط الأمني والسلامة التشغيلية لمسار قطار الرياض (الخط 3)",
+    type: "satellite",
+    typeLabel: "Transit Infrastructure",
+    typeLabelAr: "بنية النقل والمترو",
+    classification: "restricted",
+    status: "draft",
+    district: "Al Batha Central Transit Hub",
+    districtAr: "مركز البطحاء للنقل العام",
+    author: "Ziad Al-Ghamdi",
+    authorAr: "زياد الغامدي",
+    approver: "Royal Commission for Riyadh City (RCRC)",
+    approverAr: "الهيئة الملكية لمدينة الرياض",
+    createdAt: "2026-09-10T12:00:00Z",
+    hijriDate: "١٩ ربيع الأول ١٤٤٧هـ",
+    gregorianDate: "10 September 2026",
+    summary:
+      "Automated optical surveillance and security clearance evaluation detecting structural scaffolding and personnel within safety clearance buffer of electrified rail corridor.",
+    summaryAr:
+      "تقييم بالمراقبة البصرية الذكية لرصد سقالات وعمال بناء داخل النطاق الآمن للسكة المكهربة عالية الجهد بممر المترو الحيوي.",
+    metrics: {
+      incidentsCovered: 2,
+      aiConfidenceAvg: 99,
+      areaCoveredKm2: 4.8,
+      verifiedViolations: 1,
+    },
+    keyFindings: [
+      "Metal scaffold observed within 1.8m of the 750V electrified third rail.",
+      "Standard required clearance is 5.0m during active transit operations.",
+      "Transit security patrol responded within 6 minutes to establish exclusion zone.",
+    ],
+    keyFindingsAr: [
+      "رصد سقالة معدنية على بعد 1.8 متر من القضيب المكهرب 750 فولت.",
+      "المسافة النظامية المطلوبة 5.0 أمتار أثناء حركة القطارات النشطة.",
+      "دورية أمن النقل باشرت الموقع خلال 6 دقائق وفرضت طوق العزل.",
+    ],
+    recommendations: [
+      "Issue stop-work notice to facade maintenance contractor.",
+      "Reinforce physical perimeter barriers along Batha viaduct corridor.",
+    ],
+    recommendationsAr: [
+      "إصدار إشعار إيقاف أعمال لمقاول صيانة الواجهات.",
+      "تعزيز الحواجز الأمنية على طول الجسر المعلق بالبطحاء.",
+    ],
+    signatureHash: "0x3344F5E667ACBD8237C34D916B89832104F5E667ACBD822",
+    downloadsCount: 8,
+    tags: ["Metro", "Transit", "RCRC", "Safety"],
+  },
+];
+
 // Re-export geo for convenience
 export { ALL_FEATURES, SAMPLE_AOI, DISTRICTS, DISTRICTS_BY_ID };

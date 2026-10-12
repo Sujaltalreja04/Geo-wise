@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, Globe } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { Footer } from "./footer";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { useGeoWiseStore } from "@/stores/app-store";
+import { useGeoWiseStore, type ModuleId } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -44,12 +46,12 @@ function MobileSidebar() {
           <div className="leading-tight">
             <div className="font-semibold text-sm">{t("brand.name")}</div>
             <div className="text-[0.7rem] text-sidebar-foreground/60 truncate">
-              {lang === "ar" ? brand : brand}
+              {brand}
             </div>
           </div>
         </div>
         <div onClick={() => setOpen(false)} className="h-[calc(100%-4rem)]">
-          <MobileSidebarNav />
+          <MobileSidebarNav onSelect={() => setOpen(false)} />
         </div>
       </SheetContent>
     </Sheet>
@@ -57,67 +59,92 @@ function MobileSidebar() {
 }
 
 /** A simpler nav list rendered inside the mobile sheet. */
-function MobileSidebarNav() {
-  const active = useGeoWiseStore((s) => s.activeModule);
+function MobileSidebarNav({ onSelect }: { onSelect: () => void }) {
+  const pathname = usePathname();
   const setActive = useGeoWiseStore((s) => s.setActiveModule);
   const t = useGeoWiseStore((s) => s.t);
 
-  // Reuse the same NAV structure via dynamic import would be overkill; just
-  // import the same data by reading the Sidebar's NAV. Simplest: render a
-  // compact copy here.
-  // We intentionally keep this minimal to avoid duplication surprises.
+  const navItems = [
+    ["dashboard", "mod.dashboard"],
+    ["map", "mod.map"],
+    ["catalog", "mod.catalog"],
+    ["analysis", "mod.analysis"],
+    ["detections", "mod.detections"],
+    ["monitoring", "mod.monitoring"],
+    ["cases", "mod.cases"],
+    ["assistant", "mod.assistant"],
+    ["audit", "mod.audit"],
+    ["admin", "mod.admin"],
+  ] as const;
+
   return (
     <nav className="p-3 overflow-y-auto h-full scrollbar-thin">
       <p className="px-3 py-2 text-[0.7rem] uppercase tracking-wider text-sidebar-foreground/55 font-semibold">
         {t("nav.group.workspace")} / {t("nav.group.operations")}
       </p>
-      {(
-        [
-          ["dashboard", "mod.dashboard"],
-          ["map", "mod.map"],
-          ["catalog", "mod.catalog"],
-          ["analysis", "mod.analysis"],
-          ["detections", "mod.detections"],
-          ["monitoring", "mod.monitoring"],
-          ["cases", "mod.cases"],
-          ["assistant", "mod.assistant"],
-          ["audit", "mod.audit"],
-          ["admin", "mod.admin"],
-        ] as const
-      ).map(([id, label]) => (
-        <button
-          key={id}
-          onClick={() => setActive(id)}
-          className={`w-full text-start px-3 py-2 rounded-md text-sm ${
-            active === id
-              ? "bg-primary/15 text-sidebar-foreground ring-1 ring-inset ring-primary/40"
-              : "text-sidebar-foreground/75 hover:bg-sidebar-accent"
-          }`}
-        >
-          {t(label as never)}
-        </button>
-      ))}
+      {navItems.map(([id, label]) => {
+        const href = `/${id}`;
+        const isActive =
+          pathname === href || (pathname === "/" && id === "dashboard");
+
+        return (
+          <Link
+            key={id}
+            href={href}
+            onClick={() => {
+              setActive(id as ModuleId);
+              onSelect();
+            }}
+            className={cn(
+              "block w-full text-start px-3 py-2 rounded-lg text-sm font-medium transition-all mb-1",
+              isActive
+                ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            )}
+          >
+            {t(label as never)}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const active = useGeoWiseStore((s) => s.activeModule);
-  const isFullHeight = active === "assistant" || active === "map";
+  const pathname = usePathname();
+  const setActive = useGeoWiseStore((s) => s.setActiveModule);
+
+  // Sync active module state with current URL pathname
+  React.useEffect(() => {
+    const slug = pathname.replace(/^\//, "").split("/")[0] as ModuleId;
+    if (slug) {
+      setActive(slug);
+    } else {
+      setActive("dashboard");
+    }
+  }, [pathname, setActive]);
+
+  const isFullHeight =
+    pathname === "/assistant" ||
+    pathname === "/map" ||
+    pathname.startsWith("/map") ||
+    pathname.startsWith("/assistant");
 
   return (
-    <div className="h-screen max-h-screen flex flex-col bg-background overflow-hidden">
+    <div className="h-screen max-h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <Topbar />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <MobileSidebar />
         <Sidebar />
         <main
           className={cn(
-            "flex-1 flex flex-col min-w-0 min-h-0",
+            "flex-1 flex flex-col min-w-0 min-h-0 relative",
             isFullHeight ? "overflow-hidden" : "overflow-y-auto"
           )}
         >
-          <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+          <div className="flex-1 min-h-0 flex flex-col animate-in fade-in-50 duration-200">
+            {children}
+          </div>
           {!isFullHeight && <Footer />}
         </main>
       </div>

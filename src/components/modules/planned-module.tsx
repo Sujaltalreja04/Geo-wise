@@ -65,7 +65,7 @@ export function PlannedModule({
                 </span>
               </div>
               <ul className="space-y-2 text-sm">
-                {roadmap.map((item, i) => (
+                {(roadmap || []).map((item, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />
                     <span className="text-muted-foreground">

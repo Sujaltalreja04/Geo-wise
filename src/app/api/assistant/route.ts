@@ -1,88 +1,118 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/data-store";
+import { MAP_LIVE_ALERTS } from "@/lib/dummy-data";
 
 export const dynamic = "force-dynamic";
 
 const MISTRAL_API_URL =
   process.env.MISTRAL_API_URL || "https://api.mistral.ai/v1/chat/completions";
 
-const MISTRAL_API_KEY =
-  process.env.MISTRAL_API_KEY ||
-  "mstrl_n40CTDyIjJgOWw4qcEgeFOkLc3Ealkqm_2lyDoW";
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
 
 const MISTRAL_MODEL = process.env.MISTRAL_MODEL || "ministral-8b-latest";
 
-const SYSTEM_PROMPT = `You are "مساعد جيو وايز" / "GeoWise Assistant", a bilingual (Arabic/English) geospatial intelligence assistant for Saudi Arabian government analysts.
+const DYNAMIC_SYSTEM_PROMPT = `You are "GeoWise AI" ("مساعد جيو وايز الذكي"), an intelligent, perceptive, and bilingual geospatial intelligence copilot designed for Saudi municipal analytics, the Ministry of Municipalities and Housing (MOMRAH), and regional city operators (أمانة منطقة الرياض).
 
-You must follow these rules strictly:
-1. Respond in the SAME language the user wrote in. If the user mixes languages, respond in the dominant language.
-2. You are decision-support only. Never claim a detection is a verified fact. Always distinguish "AI-detected" from "verified".
-3. You must reference the platform context provided to you (datasets, detections, cases, watchlists, audit). Cite IDs and dates when you use them.
-4. If you don't have enough information to answer, say so explicitly and recommend the action the user should take (e.g., "needs field verification", "request dataset from SGA").
-5. Do NOT invent Saudi government regulations, dataset names, accuracy figures, or coordinates that are not in the provided context.
-6. Keep answers concise and structured. Use short bullet points for lists.
-7. End every substantive answer with a one-line caveat: "هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ." (Arabic) or "This is decision-support; verify before enforcement." (English).
+### CORE GUIDELINES & DYNAMIC BEHAVIOR:
+1. **BE DYNAMIC, NATURAL, AND INTELLIGENT**:
+   - Use your own analytical and conversational intelligence.
+   - NEVER output rigid, repetitive templates or canned text blocks.
+   - Listen to what the user actually said and respond directly to their specific prompt.
 
-Available platform context snapshot:
+2. **CONVERSATIONAL ADAPTABILITY**:
+   - **Greetings & Casual Questions** (e.g., "hi", "hello", "مرحبا", "سلام", "who are you?", "what can you do?"):
+     - Greet the user warmly and concisely.
+     - Introduce yourself as GeoWise AI, the municipal geospatial intelligence copilot.
+     - Mention you have live access to Riyadh's real-time alerts, satellite AI detections, drone patrols, and weather sensor telemetry.
+     - Ask how you can assist them today.
+     - NEVER output an unsolicited "Executive Summary" about an unrelated alert when greeted!
+   - **Analytical & Spatial Queries** (e.g., asking about Diriyah sinkhole, Airport PM10 dust, Shemaysi flood, KAFD substation, Olaya excavation, or general risk):
+     - Provide a direct, sharp, and structured analysis using the live platform telemetry.
+     - Reference specific locations, coordinates, severity levels, and sensor readings.
+     - Recommend actionable field next steps (e.g., dispatch inspection patrol, deploy UAV drone, coordinate with Civil Defense or DGDA).
+     - Conclude substantive analytical advice with a decision-support note:
+       - Arabic: "هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ."
+       - English: "This is decision-support; verify before enforcement."
+
+3. **BILINGUAL EXCELLENCE**:
+   - Respond in the language used by the user (Arabic or English).
+   - Arabic responses should use dignified, modern administrative and geospatial phrasing (العربية الفصحى الإدارية والبلدية).
+   - English responses should be professional, crisp, and authoritative.
+
+4. **OPTIONAL DYNAMIC CHARTS**:
+   - When the user asks for a chart, visualization, comparison, breakdown, or trend, you may append a strictly valid JSON chart block at the very end of your response:
+\`\`\`chart
+{
+  "type": "bar",
+  "title": "Descriptive Chart Title",
+  "data": [
+    {"name": "Category A", "value": 15},
+    {"name": "Category B", "value": 24}
+  ]
+}
+\`\`\`
+   - Supported types: "bar", "line", "pie".
+   - Do NOT include a chart block for greetings or simple conversational exchanges.
+
+### REAL-TIME PLATFORM KNOWLEDGE BASE:
 {{CONTEXT}}
 `;
 
-function buildContextSnapshot(): string {
+function buildFullContextSnapshot(mapContext?: any): string {
   const s = getStore();
   const lines: string[] = [];
 
-  lines.push("## Active Datasets (sample)");
-  s.datasets.slice(0, 7).forEach((d) => {
+  lines.push("### PLATFORM OPERATIONAL STATUS & KPIS");
+  lines.push(
+    `- Active Datasets: ${s.kpis.activeDatasets} | 30-Day Detections: ${s.kpis.detections30d} | Open Cases: ${s.kpis.openCases} | Active Alerts: ${s.kpis.activeAlerts}`
+  );
+  lines.push(
+    `- Average AI Model Confidence: ${(s.kpis.avgConfidence * 100).toFixed(0)}% | Human Verification Rate: ${(s.kpis.verifiedRate * 100).toFixed(0)}% | SLA Compliance: ${(s.kpis.slaCompliance * 100).toFixed(0)}%`
+  );
+
+  lines.push("\n### 12 LIVE MUNICIPAL HAZARD ALERTS (RIYADH REAL-TIME MAP)");
+  MAP_LIVE_ALERTS.forEach((a) => {
     lines.push(
-      `- ${d.id} | ${d.name} / ${d.nameAr} | ${d.geometryType} | ${d.crs} | classification=${d.classification} | version=${d.version} | features=${d.featureCount.toLocaleString()} | quality=${d.qualityScore}/100 | owner=${d.owner} | validated=${d.lastValidated}`
+      `- [${a.id}] ${a.title} / "${a.titleAr}" | Severity: ${a.severity.toUpperCase()} | District: ${a.district} (${a.districtAr}) [Lon: ${a.lon}, Lat: ${a.lat}] | Telemetry Time: ${a.time} | AI Confidence: ${(a.confidence * 100).toFixed(0)}%`
     );
+    lines.push(`  Description: ${a.description} (${a.descriptionAr})`);
+    lines.push(`  Field Action: ${a.recommendation} (${a.recommendationAr})`);
   });
 
-  lines.push("\n## Recent AI Detections");
+  lines.push("\n### ENVIRONMENTAL & SENSOR NETWORKS");
+  lines.push(
+    "- Weather Station AP-01 (Riyadh Basin Central Node): Temp 35°C (Heat Index 37°C), Wind 18 km/h NW (gusts 24 km/h), Air Quality Index (AQI) 74 (Moderate), PM2.5: 22 µg/m³, Satellite Sentinel-2 Multispectral link ACTIVE."
+  );
+  lines.push(
+    "- Autonomous UAV Drone Fleet: 3 Active sorties. Unit Alpha-1 (Orbiting Al Malqa/Olaya corridor), Unit Bravo-3 (Thermal FLIR sweep in South Industrial), Unit Delta-2 (Hydrological sensor tracking along Wadi Hanifa basin). 33 24h autonomous detections documented."
+  );
+
+  lines.push("\n### RECENT AI SATELLITE DETECTIONS");
   s.detections.slice(0, 8).forEach((d) => {
     lines.push(
-      `- ${d.id} | ${d.typeName} / ${d.typeNameAr} | model=${d.model}@${d.modelVersion} | confidence=${(d.confidence * 100).toFixed(0)}% | status=${d.status} | district=${d.districtAr} | imagery=${d.imageryDate} | lon=${d.lon}, lat=${d.lat}`
+      `- [${d.id}] Type: ${d.typeName} (${d.typeNameAr}) | Model: ${d.model}@${d.modelVersion} | Conf: ${(d.confidence * 100).toFixed(0)}% | Status: ${d.status.toUpperCase()} | District: ${d.district} [${d.lon}, ${d.lat}] | Imagery: ${d.imagerySource} (${d.imageryDate})`
     );
   });
 
-  lines.push("\n## Open Cases");
+  lines.push("\n### OPEN MUNICIPAL CASES (BALADY INTEGRATION)");
   s.cases
     .filter((c) => c.status !== "closed")
     .slice(0, 6)
     .forEach((c) => {
       lines.push(
-        `- ${c.id} | ${c.title} / ${c.titleAr} | status=${c.status} | priority=${c.priority} | assigned=${c.assignedTo} | SLA remaining=${c.slaRemainingHours}h | source=${c.source}/${c.sourceRef}`
+        `- [${c.id}] Title: "${c.title}" / "${c.titleAr}" | Priority: ${c.priority.toUpperCase()} | Assigned: ${c.assignedTo} | District: ${c.districtAr} | Remaining SLA: ${c.slaRemainingHours}h`
       );
     });
 
-  lines.push("\n## Watchlists");
-  s.watchlists.slice(0, 5).forEach((w) => {
-    lines.push(
-      `- ${w.id} | ${w.name} / ${w.nameAr} | schedule=${w.scheduleAr} | threshold=${w.thresholdAr} | lastRun=${w.lastRun} | status=${w.status}`
-    );
-  });
-
-  lines.push("\n## Live Alerts (unacknowledged)");
-  s.alerts
-    .filter((a) => !a.acknowledged)
-    .slice(0, 5)
-    .forEach((a) => {
-      lines.push(
-        `- ${a.id} | severity=${a.severity} | ${a.messageAr} | watchlist=${a.watchlistNameAr} | triggered=${a.triggeredAt}`
-      );
-    });
-
-  lines.push("\n## Recent Audit Events");
-  s.audit.slice(0, 6).forEach((e) => {
-    lines.push(
-      `- ${e.timestamp} | ${e.actionAr} | target=${e.targetAr} | actor=${e.actorAr} | result=${e.result} | module=${e.module}`
-    );
-  });
-
-  lines.push("\n## Dashboard KPIs (current)");
-  lines.push(
-    `- activeDatasets=${s.kpis.activeDatasets}; detections30d=${s.kpis.detections30d}; openCases=${s.kpis.openCases}; activeAlerts=${s.kpis.activeAlerts}; avgConfidence=${(s.kpis.avgConfidence * 100).toFixed(0)}%; verifiedRate=${(s.kpis.verifiedRate * 100).toFixed(0)}%; slaCompliance=${(s.kpis.slaCompliance * 100).toFixed(0)}%`
-  );
+  if (mapContext) {
+    lines.push("\n### ACTIVE USER MAP VIEWPORT CONTEXT");
+    if (mapContext.selectedAlertId) {
+      lines.push(`- The user currently has alert "${mapContext.selectedAlertId}" selected on the map.`);
+    }
+    if (mapContext.center) {
+      lines.push(`- Map center coordinates: [Lon: ${mapContext.center[0]}, Lat: ${mapContext.center[1]}], Zoom: ${mapContext.zoom}`);
+    }
+  }
 
   return lines.join("\n");
 }
@@ -95,10 +125,11 @@ export interface ChartSpec {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { messages, lang, visualize } = body as {
+  const { messages, lang, visualize, mapContext } = body as {
     messages?: { role: string; content: string }[];
     lang?: "ar" | "en";
     visualize?: boolean;
+    mapContext?: any;
   };
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -108,28 +139,20 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
-    let system = SYSTEM_PROMPT.replace(
-      "{{CONTEXT}}",
-      buildContextSnapshot()
+  if (!MISTRAL_API_KEY) {
+    return NextResponse.json(
+      {
+        error: "Configuration Error",
+        detail:
+          "MISTRAL_API_KEY is not defined in the environment. Please configure MISTRAL_API_KEY in .env or .env.local",
+      },
+      { status: 500 }
     );
+  }
 
-    if (visualize) {
-      system += `\n\nCRITICAL VISUALIZATION REQUIREMENT: The user has requested a visualization.
-Along with your text summary, you MUST generate an interactive chart using real metrics from the platform context snapshot above.
-Format the chart block strictly as:
-\`\`\`chart
-{
-  "type": "bar",
-  "title": "Chart Title",
-  "data": [
-    {"name": "Category A", "value": 12},
-    {"name": "Category B", "value": 8}
-  ]
-}
-\`\`\`
-Valid "type" values are "bar", "line", or "pie". Ensure the JSON inside \`\`\`chart is valid.`;
-    }
+  try {
+    const contextText = buildFullContextSnapshot(mapContext);
+    let system = DYNAMIC_SYSTEM_PROMPT.replace("{{CONTEXT}}", contextText);
 
     const lastUserMessage =
       [...messages].reverse().find((m) => m.role === "user")?.content || "";
@@ -137,24 +160,52 @@ Valid "type" values are "bar", "line", or "pie". Ensure the JSON inside \`\`\`ch
     const isEnglishQuery =
       (/[a-zA-Z]/.test(lastUserMessage) && !hasArabicChars) || lang === "en";
 
-    const languageInstruction = isEnglishQuery
-      ? "LANGUAGE REQUIREMENT: The user wrote in English. You MUST respond completely in English. Translate any Arabic terms or context values into clear English. End with: 'This is decision-support; verify before enforcement.'\nFORMATTING: Use clean, standard markdown. Do not litter text with redundant asterisks or stars."
-      : "LANGUAGE REQUIREMENT: The user wrote in Arabic. You MUST respond in Modern Standard Arabic. End with: 'هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ.'\nFORMATTING: Use clean, standard markdown. Do not litter text with redundant asterisks or stars.";
+    // Strictly prioritize the explicit site language if specified
+    const targetLang = lang === "en" ? "en" : (lang === "ar" ? "ar" : (isEnglishQuery ? "en" : "ar"));
+
+    const languageInstruction =
+      targetLang === "en"
+        ? `\n\n### CRITICAL MANDATE — STRICT LANGUAGE ENFORCEMENT:
+- The user has set the application interface to ENGLISH (site language is currently English).
+- You MUST formulate your ENTIRE response in ENGLISH.
+- DO NOT use any Arabic sentences, greetings, or headers. Even when citing location names, use their standard English transliterations (e.g. "Historical Diriyah", "Ash Shemaysi", "Al Olaya", "King Khalid International Airport", "South Industrial Zone").
+- Conclude substantive analytical advice with: "This is decision-support; verify before enforcement."`
+        : `\n\n### CRITICAL MANDATE — STRICT LANGUAGE ENFORCEMENT:
+- The user has set the application interface to ARABIC (site language is currently Arabic).
+- You MUST formulate your ENTIRE response in high-level administrative ARABIC (العربية الفصحى الإدارية والبلدية).
+- DO NOT reply in English.
+- Conclude substantive analytical advice with: "هذه مخرجات لدعم القرار؛ تحقق قبل التنفيذ."`;
+
+    system += languageInstruction;
+
+    // Sanitize past messages so an old initial welcome in another language does not mislead the model
+    const sanitizedHistory = messages.slice(-8).map((m) => {
+      let content = m.content;
+      if (m.role === "assistant") {
+        if (targetLang === "en" && /مرحباً بك في \*\*مساعد جيو وايز/.test(content)) {
+          content = "Welcome to GeoWise AI Copilot. Connected directly to Mistral AI with real-time access to Riyadh's geospatial intelligence.";
+        } else if (targetLang === "ar" && /Welcome to \*\*GeoWise AI Copilot/.test(content)) {
+          content = "مرحباً بك في مساعد جيو وايز الجيومكاني الذكي. متصل مباشرة بنموذج Mistral AI مع إمكانية الوصول إلى كافة بيانات الرصد الجيومكاني.";
+        }
+      }
+      return {
+        role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+        content,
+      };
+    });
 
     const chatMessages = [
-      { role: "system", content: `${system}\n\n${languageInstruction}` },
-      ...messages.map((m) => ({
-        role: (m.role === "assistant" ? "assistant" : "user") as
-          | "user"
-          | "assistant",
-        content: m.content,
-      })),
+      {
+        role: "system" as const,
+        content: system,
+      },
+      ...sanitizedHistory,
     ];
 
     const payload = {
       model: MISTRAL_MODEL,
-      max_tokens: 1024,
-      temperature: 0.3,
+      max_tokens: 1200,
+      temperature: 0.45, // Dynamic, natural generation
       messages: chatMessages,
     };
 
@@ -173,7 +224,7 @@ Valid "type" values are "bar", "line", or "pie". Ensure the JSON inside \`\`\`ch
     });
 
     if (!res.ok) {
-      // Try fallback to open-mistral-7b if ministral had an issue
+      // Try fallback model if default model is busy or not found
       const fallbackRes = await fetch(MISTRAL_API_URL, {
         method: "POST",
         headers,
@@ -190,11 +241,27 @@ Valid "type" values are "bar", "line", or "pie". Ensure the JSON inside \`\`\`ch
       reply = data.choices?.[0]?.message?.content ?? "";
     }
 
-    // Extract chart if present
-    const chart = extractChart(reply);
+    // Extract dynamic chart if emitted by Mistral
+    let chart = extractChart(reply);
+
+    // Only synthesize a chart if visualization was explicitly requested by query
+    const lowerQuery = lastUserMessage.toLowerCase();
+    const queryRequestsChart =
+      lowerQuery.includes("chart") ||
+      lowerQuery.includes("رسم بياني") ||
+      lowerQuery.includes("مخطط") ||
+      lowerQuery.includes("trend") ||
+      lowerQuery.includes("breakdown") ||
+      lowerQuery.includes("distribution") ||
+      lowerQuery.includes("توزيع") ||
+      lowerQuery.includes("إحصاء");
+
+    if (!chart && visualize && queryRequestsChart) {
+      chart = synthesizeChartFromQuery(lastUserMessage, isEnglishQuery);
+    }
 
     return NextResponse.json({
-      reply,
+      reply: cleanReplyText(reply),
       chart,
       sources: extractCitations(reply),
     });
@@ -208,15 +275,28 @@ Valid "type" values are "bar", "line", or "pie". Ensure the JSON inside \`\`\`ch
   }
 }
 
+function cleanReplyText(text: string): string {
+  // Strip out chart code blocks so raw JSON doesn't clutter chat text
+  return text.replace(/```chart\s*[\s\S]*?```/g, "").trim();
+}
+
 function extractChart(text: string): ChartSpec | null {
-  const match = text.match(/```chart\s*([\s\S]*?)\s*```/);
+  const match =
+    text.match(/```chart\s*([\s\S]*?)\s*```/) ||
+    text.match(/```json\s*(\{[\s\S]*?"data"\s*:[\s\S]*?\})\s*```/);
+
   if (!match) return null;
+
   try {
-    const parsed = JSON.parse(match[1]);
-    if (parsed && parsed.data && Array.isArray(parsed.data)) {
+    const sanitized = match[1]
+      .replace(/,\s*([}\]])/g, "$1")
+      .trim();
+
+    const parsed = JSON.parse(sanitized);
+    if (parsed && parsed.data && Array.isArray(parsed.data) && parsed.data.length > 0) {
       return {
         type: ["bar", "line", "pie"].includes(parsed.type) ? parsed.type : "bar",
-        title: parsed.title || "Data Analysis",
+        title: parsed.title || "Telemetry Analysis",
         data: parsed.data.map((d: any) => ({
           name: String(d.name || ""),
           value: Number(d.value) || 0,
@@ -227,17 +307,44 @@ function extractChart(text: string): ChartSpec | null {
   return null;
 }
 
-/** Very small citation extractor: finds IDs we render as badges. */
+function synthesizeChartFromQuery(query: string, isEnglish: boolean): ChartSpec {
+  const lower = query.toLowerCase();
+  const s = getStore();
+
+  if (lower.includes("alert") || lower.includes("تنبيه") || lower.includes("flood") || lower.includes("سيول")) {
+    const critical = MAP_LIVE_ALERTS.filter((a) => a.severity === "critical").length;
+    const warning = MAP_LIVE_ALERTS.filter((a) => a.severity === "warning").length;
+    const info = MAP_LIVE_ALERTS.filter((a) => a.severity === "info").length;
+    return {
+      type: "bar",
+      title: isEnglish ? "Active Alerts by Severity" : "توزيع التنبيهات حسب درجة الخطورة",
+      data: [
+        { name: isEnglish ? "Critical" : "حرجة", value: critical },
+        { name: isEnglish ? "Warning" : "تحذيرية", value: warning },
+        { name: isEnglish ? "Info" : "معلوماتية", value: info },
+      ],
+    };
+  }
+
+  return {
+    type: "bar",
+    title: isEnglish ? "Live Incidents Overview" : "المؤشرات التشغيلية للمنصة",
+    data: [
+      { name: isEnglish ? "Critical Hazards" : "مخاطر حرجة", value: 4 },
+      { name: isEnglish ? "Regulatory Warnings" : "تحذيرات تنظيمية", value: 5 },
+      { name: isEnglish ? "Infrastructure Info" : "معلومات بنية", value: 3 },
+    ],
+  };
+}
+
 function extractCitations(text: string): string[] {
   const ids = new Set<string>();
   const patterns = [
-    /\b(ds-[a-z0-9-]+)/g,
-    /\b(det-\d{3})/g,
-    /\b(GW-CASE-\d+)/g,
-    /\b(watch-w-[a-z0-9-]+)/g,
-    /\b(alert-\d{3})/g,
-    /\b(run-\d{4}-\d{4}-\d{2})/g,
-    /\b(a-\d{4,})/g,
+    /\b(alert-\d{3})\b/g,
+    /\b(det-\d{3})\b/g,
+    /\b(GW-CASE-\d+)\b/g,
+    /\b(ds-[a-z0-9-]+)\b/g,
+    /\b(watch-w-[a-z0-9-]+)\b/g,
   ];
   for (const re of patterns) {
     const matches = text.matchAll(re);

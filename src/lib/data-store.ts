@@ -19,12 +19,14 @@ import {
   ACTIVITY,
   TENANTS,
   DASHBOARD_KPIS,
+  REPORTS,
   type Dataset,
   type Detection,
   type Case,
   type AuditEvent,
   type Alert,
   type AnalysisRun,
+  type ReportItem,
 } from "./dummy-data";
 
 // Mutable copies (so callers can't mutate the seed directly)
@@ -39,6 +41,7 @@ const store = {
   runs: [...ANALYSIS_RUNS] as AnalysisRun[],
   activity: [...ACTIVITY],
   tenants: [...TENANTS],
+  reports: [...REPORTS] as ReportItem[],
   kpis: structuredClone(DASHBOARD_KPIS),
 };
 
@@ -221,3 +224,51 @@ export function createAnalysisRun(
 export function pushAudit(event: AuditEvent) {
   store.audit.unshift(event);
 }
+
+export function updateReport(
+  id: string,
+  patch: Partial<Pick<ReportItem, "status" | "approver" | "approverAr">>
+): ReportItem | null {
+  const rep = store.reports.find((r) => r.id === id);
+  if (!rep) return null;
+  Object.assign(rep, patch);
+  pushAudit({
+    id: `a-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    actor: "Khalid Al-Otaibi",
+    actorAr: "خالد العتيبي",
+    action: `Report ${patch.status ?? "updated"}`,
+    actionAr: `تحديث حالة التقرير إلى ${patch.status ?? ""}`,
+    target: id,
+    targetAr: id,
+    result: "success",
+    ip: "10.42.7.19",
+    tenantId: "t-momrah",
+    tenantName: "MOMRAH",
+    module: "M13.2 — Reports & Publishing",
+    details: `Report status transitioned to ${patch.status}`,
+  });
+  return rep;
+}
+
+export function createReport(newReport: ReportItem): ReportItem {
+  store.reports.unshift(newReport);
+  pushAudit({
+    id: `a-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    actor: newReport.author,
+    actorAr: newReport.authorAr,
+    action: "Report generated",
+    actionAr: "إنشاء تقرير واستخبارات مكانية",
+    target: newReport.id,
+    targetAr: newReport.id,
+    result: "success",
+    ip: "10.42.7.19",
+    tenantId: "t-momrah",
+    tenantName: "MOMRAH",
+    module: "M13.2 — Reports & Publishing",
+    details: `Official report ${newReport.id} (${newReport.title}) compiled with signature ${newReport.signatureHash.slice(0, 10)}...`,
+  });
+  return newReport;
+}
+
