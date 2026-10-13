@@ -69,7 +69,13 @@ const NAV: NavGroup[] = [
     labelKey: "nav.group.intelligence",
     items: [
       { id: "detections", icon: ScanSearch, moduleId: "M07", badge: "Live" },
-      { id: "predictive", icon: TrendingUp, moduleId: "M08", planned: true },
+      {
+        id: "predictive",
+        icon: TrendingUp,
+        moduleId: "M08",
+        badge: "Live",
+        badgeColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+      },
       { id: "rules", icon: Gavel, moduleId: "M09", planned: true },
     ],
   },
@@ -110,6 +116,13 @@ const NAV: NavGroup[] = [
         badgeColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
       },
       { id: "collaboration", icon: Users, moduleId: "M14", planned: true },
+      {
+        id: "compliance",
+        icon: ShieldCheck,
+        moduleId: "GRC",
+        badge: "Live",
+        badgeColor: "bg-teal-500/20 text-teal-300 border-teal-500/40",
+      },
       { id: "audit", icon: ShieldCheck, moduleId: "M15" },
       { id: "admin", icon: Building2, moduleId: "M01" },
     ],

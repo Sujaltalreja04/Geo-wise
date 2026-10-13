@@ -84,11 +84,19 @@ export const dictionary = {
   "mod.reports": { en: "Reports & Publishing", ar: "التقارير والنشر" },
   "mod.collaboration": { en: "Collaboration", ar: "التعاون" },
   "mod.audit": { en: "Audit & Governance", ar: "التدقيق والحوكمة" },
+  "mod.compliance": { en: "Compliance & Governance", ar: "الامتثال والحوكمة" },
   "mod.admin": { en: "Administration", ar: "الإدارة" },
   "mod.api": { en: "APIs & SDK", ar: "واجهات و SDK" },
   "mod.notifications": { en: "Notifications", ar: "الإشعارات" },
   "mod.ops": { en: "System Operations", ar: "عمليات النظام" },
   "mod.onboarding": { en: "Onboarding & Help", ar: "التهيئة والمساعدة" },
+
+  // Compliance & Governance
+  "compliance.title": { en: "Compliance & Governance", ar: "الامتثال والحوكمة" },
+  "compliance.subtitle": {
+    en: "Aseer Supervisory Committee (SVC) & Fast Track Office regulatory frameworks, controls, evidence repository, spatial data governance, and audit ledger.",
+    ar: "إدارة الأطر التنظيمية، الضوابط الرقابية، مستودع الأدلة، حوكمة البيانات المكانية، وسجل التدقيق للجنة الإشرافية ومكتب المسار السريع.",
+  },
 
   // Dashboard
   "dash.title": { en: "Executive Dashboard", ar: "لوحة المعلومات التنفيذية" },

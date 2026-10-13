@@ -73,6 +73,7 @@ function MobileSidebarNav({ onSelect }: { onSelect: () => void }) {
     ["monitoring", "mod.monitoring"],
     ["cases", "mod.cases"],
     ["assistant", "mod.assistant"],
+    ["compliance", "mod.compliance"],
     ["audit", "mod.audit"],
     ["admin", "mod.admin"],
   ] as const;

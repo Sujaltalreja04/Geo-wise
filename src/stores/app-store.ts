@@ -22,6 +22,7 @@ export type ModuleId =
   | "collaboration"
   | "audit"
   | "admin"
+  | "compliance"
   | "api"
   | "notifications"
   | "ops"

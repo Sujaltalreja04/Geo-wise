@@ -79,7 +79,7 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import { AiMessageRenderer } from "@/components/chat/ai-message-renderer";
 
 // ─── Math & Geospatial Helpers ─────────────────────────────────────────
 function haversine(a: [number, number], b: [number, number]): number {
@@ -2095,13 +2095,13 @@ export function MapWorkspace() {
                   >
                     <div
                       className={cn(
-                        "p-3.5 rounded-2xl shadow-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none text-[0.75rem] transition-all w-full",
+                        "p-4 rounded-2xl shadow-xs transition-all w-full overflow-hidden",
                         isUser
-                          ? "bg-primary text-primary-foreground rounded-br-none"
-                          : "bg-muted/80 text-foreground border border-border/50 rounded-bl-none shadow-md backdrop-blur-sm"
+                          ? "bg-primary text-primary-foreground rounded-br-none font-medium max-w-[85%] ms-auto"
+                          : "bg-white dark:bg-card/90 text-foreground border border-slate-200/90 dark:border-border/70 rounded-bl-none shadow-sm backdrop-blur-sm"
                       )}
                     >
-                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                      <AiMessageRenderer content={m.content} isUser={isUser} />
 
                       {/* Embedded Interactive Chart */}
                       {m.chart && (

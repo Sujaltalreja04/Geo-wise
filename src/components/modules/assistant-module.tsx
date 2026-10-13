@@ -59,7 +59,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import { AiMessageRenderer } from "@/components/chat/ai-message-renderer";
 import { RIYADH_CENTER } from "@/lib/saudi-geo";
 
 export interface ChartSpec {
@@ -1339,15 +1339,8 @@ function ChatBubble({
           )}
 
           {/* Markdown Content */}
-          <div
-            dir={lang === "ar" ? "rtl" : "ltr"}
-            className="text-xs sm:text-sm leading-relaxed prose dark:prose-invert max-w-none space-y-2 [&_p]:my-1.5 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-5 [&_li]:my-1 [&_strong]:font-bold [&_strong]:text-foreground [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h4]:text-xs [&_h4]:font-semibold [&_h4]:mt-2.5 [&_h4]:mb-1 [&_hr]:my-3 [&_hr]:border-border/60 [&_code]:font-mono [&_code]:text-[0.72rem] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:bg-primary/10 [&_code]:text-primary"
-          >
-            {isUser ? (
-              <div className="whitespace-pre-wrap break-words">{cleanContent}</div>
-            ) : (
-              <ReactMarkdown>{cleanContent}</ReactMarkdown>
-            )}
+          <div dir={lang === "ar" ? "rtl" : "ltr"} className="w-full">
+            <AiMessageRenderer content={cleanContent} isUser={isUser} />
           </div>
 
           {/* Embedded High-Tech Interactive Analytics Widget */}
