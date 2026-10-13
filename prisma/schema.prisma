@@ -251,3 +251,96 @@ model ComplianceSettings {
   updatedAt                   DateTime    @default(now())
   updatedBy                   String      @default("Administrator")
 }
+
+model SiteAssessment {
+  id                        String                     @id
+  siteName                  String
+  siteNameAr                String?
+  applicantName             String
+  authority                 String                     // e.g. Amanat Al-Riyadh / MOMRAH
+  assessmentType            String                     // additional_floors | land_use_change | increased_density | setback_variance | general_development
+  status                    String                     // completed | processing | requires_study | constrained | data_gap
+  overallSpatialVerdict     String                     // Supportive | Supportive with Conditions | Constrained | Requires Further Study | Data Gap
+  executiveSummary          String
+  executiveSummaryAr        String
+  address                   String
+  city                      String                     @default("Riyadh")
+  district                  String                     @default("Al Olaya")
+  latitude                  Float
+  longitude                 Float
+  areaM2                    Float
+  perimeterM                Float
+  administrativeArea        String
+  crossesAdminBoundary      Boolean                    @default(false)
+  proposedDetails           String                     // JSON string of proposed parameters
+  boundaryGeoJson           String                     // GeoJSON geometry string
+  originalBoundaryGeoJson   String?
+  isBoundaryCorrected       Boolean                    @default(false)
+  boundaryValidationNotes   String?                    // JSON string
+  analysisMethodVersion     String                     @default("v2.4-SpatialEngine")
+  dataFreshnessSummary      String?
+  version                   Int                        @default(1)
+  assessorName              String                     @default("Eng. Tariq Al-Mansoor")
+  assessorRole              String                     @default("Senior Planning Officer")
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+
+  criteria                  SiteAssessmentCriterion[]
+  measurements              SiteAssessmentMeasurement[]
+  dataGaps                  SiteAssessmentDataGap[]
+  followUps                 SiteAssessmentFollowUp[]
+}
+
+model SiteAssessmentCriterion {
+  id                    String         @id @default(cuid())
+  assessmentId          String
+  assessment            SiteAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  criterionKey          String         // boundary_validation | land_use | building_height | development_density | setbacks | road_access | terrain_slope | flood_risk | environmental_heritage | sensitive_facilities | utilities
+  title                 String
+  titleAr               String
+  existingCondition     String
+  proposedCondition     String?
+  measuredFinding       String
+  status                String         // Supportive | Supportive with Conditions | Constrained | Requires Further Study | Data Gap
+  evidenceSource        String
+  sourceVersionDate     String
+  analysisMethod        String
+  limitations           String?
+  followUpRequired      String?
+  sortOrder             Int            @default(0)
+  createdAt             DateTime       @default(now())
+}
+
+model SiteAssessmentMeasurement {
+  id            String         @id @default(cuid())
+  assessmentId  String
+  assessment    SiteAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  metricName    String
+  metricValue   Float
+  unit          String
+  category      String
+  context       String
+  createdAt     DateTime       @default(now())
+}
+
+model SiteAssessmentDataGap {
+  id            String         @id @default(cuid())
+  assessmentId  String
+  assessment    SiteAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  datasetName   String
+  gapType       String         // Missing Data | Outdated Layer | Resolution Insufficient | Conflicting Boundary | Unverified Reference
+  description   String
+  severity      String         // Critical | High | Medium | Low
+  impact        String
+  createdAt     DateTime       @default(now())
+}
+
+model SiteAssessmentFollowUp {
+  id                 String         @id @default(cuid())
+  assessmentId       String
+  assessment         SiteAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  investigationType  String
+  recommendation     String
+  priority           String         // High | Medium | Low
+  createdAt          DateTime       @default(now())
+}

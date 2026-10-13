@@ -28,6 +28,7 @@ import {
   Globe,
   Radio,
   Flame,
+  Compass,
 } from "lucide-react";
 import { useGeoWiseStore } from "@/stores/app-store";
 import type { ModuleId } from "@/stores/app-store";
@@ -57,12 +58,32 @@ const NAV: NavGroup[] = [
   {
     labelKey: "nav.group.workspace",
     items: [
-      { id: "dashboard", icon: LayoutDashboard, moduleId: "M13" },
-      { id: "map", icon: MapIcon, moduleId: "M04" },
-      { id: "catalog", icon: Database, moduleId: "M03" },
-      { id: "analysis", icon: Workflow, moduleId: "M05" },
-      { id: "ingestion", icon: Upload, moduleId: "M02", planned: true },
-      { id: "imagery", icon: Satellite, moduleId: "M06", planned: true },
+      { id: "dashboard", icon: LayoutDashboard, moduleId: "A" },
+      {
+        id: "assessments",
+        icon: FolderKanban,
+        moduleId: "B",
+        badge: "Live",
+        badgeColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+      },
+      {
+        id: "new-assessment",
+        icon: Compass,
+        moduleId: "C",
+        badge: "New",
+        badgeColor: "bg-teal-500/20 text-teal-300 border-teal-500/40",
+      },
+      { id: "map", icon: MapIcon, moduleId: "D", badge: "GIS" },
+      { id: "analysis", icon: Workflow, moduleId: "E" },
+      { id: "catalog", icon: Database, moduleId: "F" },
+      {
+        id: "reports",
+        icon: FileText,
+        moduleId: "G",
+        badge: "Live",
+        badgeColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+      },
+      { id: "admin", icon: Building2, moduleId: "H" },
     ],
   },
   {
@@ -193,10 +214,11 @@ export function Sidebar() {
                 <ul className="space-y-0.5 mt-1">
                   {group.items.map((item) => {
                     const Icon = item.icon;
-                    const href = `/${item.id}`;
+                    const href = item.id === "new-assessment" ? "/assessments/new" : `/${item.id}`;
                     const isActive =
                       pathname === href ||
-                      (pathname === "/" && item.id === "dashboard");
+                      (pathname === "/" && item.id === "dashboard") ||
+                      (item.id === "assessments" && pathname.startsWith("/assessments") && pathname !== "/assessments/new");
 
                     return (
                       <li key={item.id}>

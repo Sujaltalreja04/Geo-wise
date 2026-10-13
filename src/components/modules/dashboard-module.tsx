@@ -17,6 +17,12 @@ import {
   ExternalLink,
   ChevronRight,
   Layers,
+  Compass,
+  PlusCircle,
+  CheckCircle2,
+  AlertTriangle,
+  HelpCircle,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -162,6 +168,17 @@ export function DashboardModule() {
     initialData: { kpis: DASHBOARD_KPIS, activity: ACTIVITY },
   });
 
+  const { data: statsData } = useQuery({
+    queryKey: ["assessmentStats"],
+    queryFn: async () => {
+      const res = await fetch("/api/assessments/stats");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const assessmentStats = statsData?.stats;
+
   const kpis: Kpi[] = [
     {
       key: "dash.kpi.datasets",
@@ -239,6 +256,23 @@ export function DashboardModule() {
         icon={ActivityIcon}
         actions={
           <div className="flex items-center gap-2">
+            <Link href="/assessments/new">
+              <Button
+                size="sm"
+                className="h-8.5 gap-1.5 text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+              >
+                <PlusCircle className="size-3.5" />
+                <span>{lang === "ar" ? "تقييم موقع جديد" : "New Site Assessment"}</span>
+              </Button>
+            </Link>
+
+            <Link href="/assessments">
+              <Button variant="outline" size="sm" className="h-8.5 gap-1.5 text-xs font-semibold">
+                <FolderKanban className="size-3.5 text-primary" />
+                <span>{lang === "ar" ? "سجل التقييمات" : "Site Assessments"}</span>
+              </Button>
+            </Link>
+
             <Link href="/assistant">
               <Button
                 variant="outline"
@@ -246,20 +280,186 @@ export function DashboardModule() {
                 className="h-8.5 gap-1.5 text-xs font-semibold border-primary/50 text-primary hover:bg-primary/10 shadow-xs"
               >
                 <Sparkles className="size-3.5" />
-                <span>{lang === "ar" ? "استشارة المساعد الذكي" : "Ask AI Copilot"}</span>
-              </Button>
-            </Link>
-
-            <Link href="/reports">
-              <Button variant="outline" size="sm" className="h-8.5 text-xs font-semibold">
-                {t("dash.viewAll")}
+                <span>{lang === "ar" ? "المساعد الذكي" : "AI Copilot"}</span>
               </Button>
             </Link>
           </div>
         }
       />
 
-      <ModuleBody className="space-y-5">
+      <ModuleBody className="space-y-6">
+        {/* Section 4.A: Development Site Assessments Overview Banner & KPIs */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold flex items-center gap-2 text-foreground">
+                <Compass className="size-4 text-primary" />
+                <span>
+                  {lang === "ar"
+                    ? "مؤشرات تقييم طلبات التطوير العقاري (GeoWise Assessment Engine)"
+                    : "Property Development Assessment Indicators"}
+                </span>
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {lang === "ar"
+                  ? "فحص المواقع، الارتفاعات، الارتدادات، استعمالات الأراضي، والمخاطر الهيدرولوجية وفق الأدلة الجغرافية"
+                  : "Evidence-based spatial assessment of proposed building heights, setbacks, zoning, and wadi hazard exposure"}
+              </p>
+            </div>
+            <Link href="/assessments" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+              <span>{lang === "ar" ? "عرض جميع المواقع" : "View All Sites"}</span>
+              <ChevronRight className="size-3 rtl:rotate-180" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <Card className="p-3.5 bg-card/80 border-border/80 shadow-xs">
+              <div className="text-[0.7rem] text-muted-foreground font-medium">
+                {lang === "ar" ? "إجمالي المواقع المقيمة" : "Total Sites Assessed"}
+              </div>
+              <div className="text-2xl font-bold font-mono text-primary mt-1">
+                {assessmentStats ? assessmentStats.totalSites : 4}
+              </div>
+              <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+                {lang === "ar" ? "مخططات عقارية مسجلة" : "Registered parcels"}
+              </div>
+            </Card>
+
+            <Card className="p-3.5 bg-card/80 border-emerald-500/30 shadow-xs">
+              <div className="text-[0.7rem] text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <CheckCircle2 className="size-3" />
+                {lang === "ar" ? "مدعوم مكانياً" : "Supportive"}
+              </div>
+              <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                {assessmentStats ? assessmentStats.completed : 3}
+              </div>
+              <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+                {lang === "ar" ? "قرائن مكانية إيجابية" : "Supported by spatial evidence"}
+              </div>
+            </Card>
+
+            <Card className="p-3.5 bg-card/80 border-red-500/30 shadow-xs">
+              <div className="text-[0.7rem] text-red-700 dark:text-red-400 font-medium flex items-center gap-1">
+                <AlertTriangle className="size-3" />
+                {lang === "ar" ? "مقيّد مكانياً" : "Constrained Sites"}
+              </div>
+              <div className="text-2xl font-bold font-mono text-red-600 dark:text-red-400 mt-1">
+                {assessmentStats ? assessmentStats.constrained : 1}
+              </div>
+              <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+                {lang === "ar" ? "محددات طيران أو ارتداد" : "Height / Setback conflicts"}
+              </div>
+            </Card>
+
+            <Card className="p-3.5 bg-card/80 border-blue-500/30 shadow-xs">
+              <div className="text-[0.7rem] text-blue-700 dark:text-blue-400 font-medium flex items-center gap-1">
+                <HelpCircle className="size-3" />
+                {lang === "ar" ? "يتطلب دراسة تفصيلية" : "Requires Further Study"}
+              </div>
+              <div className="text-2xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-1">
+                {assessmentStats ? assessmentStats.requiresStudy : 1}
+              </div>
+              <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+                {lang === "ar" ? "دراسة سيول / مرور" : "Hydrology / TIS required"}
+              </div>
+            </Card>
+
+            <Card className="p-3.5 bg-card/80 border-purple-500/30 shadow-xs col-span-2 sm:col-span-1">
+              <div className="text-[0.7rem] text-purple-700 dark:text-purple-400 font-medium flex items-center gap-1">
+                <ActivityIcon className="size-3" />
+                {lang === "ar" ? "مواقع بها فجوة بيانات" : "Data Gaps Flagged"}
+              </div>
+              <div className="text-2xl font-bold font-mono text-purple-600 dark:text-purple-400 mt-1">
+                {assessmentStats ? assessmentStats.withDataGaps : 4}
+              </div>
+              <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+                {lang === "ar" ? "سعة مرافق غير مؤكدة" : "Unverified utility telemetry"}
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* Recent Site Assessments List */}
+        {assessmentStats?.recentAssessments && assessmentStats.recentAssessments.length > 0 && (
+          <Card className="bg-card/80 border-border/70 shadow-xs">
+            <div className="p-4 pb-2 border-b border-border/50 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-foreground">
+                  {lang === "ar" ? "أحدث تقييمات مواقع التطوير العقاري" : "Recent Property Development Assessments"}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {lang === "ar"
+                    ? "انقر على أي تقرير للاطلاع على فحص المعايير الـ 11 والأدلة المكانية"
+                    : "Click any assessment to inspect 11 spatial criteria, measurements, and evidence"}
+                </p>
+              </div>
+
+              <Link href="/assessments">
+                <Button variant="ghost" size="sm" className="text-xs text-primary h-7">
+                  {lang === "ar" ? "فتح السجل كاملاً" : "View All"}
+                </Button>
+              </Link>
+            </div>
+
+            <div className="divide-y divide-border/40 text-xs">
+              {assessmentStats.recentAssessments.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[0.7rem] px-2 py-0.5 rounded bg-muted font-bold text-muted-foreground">
+                        {item.id}
+                      </span>
+                      <span className="font-semibold text-foreground text-sm">
+                        {lang === "ar" ? item.siteNameAr || item.siteName : item.siteName}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[0.65rem] ${
+                          item.overallSpatialVerdict === "Supportive"
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                            : item.overallSpatialVerdict === "Constrained"
+                            ? "bg-red-500/10 text-red-600 border-red-500/30"
+                            : "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                        }`}
+                      >
+                        {item.overallSpatialVerdict}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-[0.72rem]">
+                      <span>{item.district}</span>
+                      <span>•</span>
+                      <span className="font-mono">
+                        {item.areaM2 ? `${(item.areaM2 / 10000).toFixed(2)} ha` : "—"}
+                      </span>
+                      <span>•</span>
+                      <span>{item.applicantName}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    <Link href={`/analysis?id=${item.id}`}>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 text-primary">
+                        <FileText className="size-3" />
+                        <span>{lang === "ar" ? "فحص النتائج" : "Results"}</span>
+                      </Button>
+                    </Link>
+
+                    <Link href={`/map?siteId=${item.id}`}>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
+                        <Compass className="size-3" />
+                        <span>{lang === "ar" ? "الخريطة" : "Map"}</span>
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         {/* KPI Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map((k) => {
