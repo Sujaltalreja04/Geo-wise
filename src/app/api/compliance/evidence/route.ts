@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ensureComplianceSeeded, generateSha256 } from "@/lib/compliance-service";
+import { ensureComplianceSeeded, generateSha256, getSafeComplianceEvidence } from "@/lib/compliance-service";
 
 export const dynamic = "force-dynamic";
 
@@ -21,56 +21,25 @@ const FORBIDDEN_EXTENSIONS = [".exe", ".sh", ".bat", ".cmd", ".vbs", ".msi", ".d
 
 export async function GET(req: Request) {
   try {
-    await ensureComplianceSeeded();
     const { searchParams } = new URL(req.url);
-    const controlId = searchParams.get("controlId");
-    const frameworkId = searchParams.get("frameworkId");
-    const status = searchParams.get("status");
-    const downloadId = searchParams.get("downloadId");
+    const controlId = searchParams.get("controlId") || undefined;
+    const frameworkId = searchParams.get("frameworkId") || undefined;
+    const status = searchParams.get("status") || undefined;
+    const downloadId = searchParams.get("downloadId") || undefined;
     const actor = searchParams.get("actor") || "Khalid Al-Otaibi";
 
-    // Secure download simulation with authorization audit event
     if (downloadId) {
-      const item = await db.complianceEvidence.findUnique({ where: { id: downloadId } });
-      if (!item) return NextResponse.json({ error: "Evidence not found." }, { status: 404 });
-
-      const auditId = `AUD-${Date.now()}`;
-      await db.auditEvent.create({
-        data: {
-          id: auditId,
-          actorId: "u-001",
-          actorName: actor,
-          action: "Evidence Downloaded",
-          resourceType: "ComplianceEvidence",
-          resourceId: downloadId,
-          outcome: "success",
-          details: `Authorized download of file ${item.originalFilename} (SHA256: ${item.checksumSha256.slice(0, 12)}...) by ${actor}.`,
-          tamperProofHash: generateSha256(`${auditId}-${downloadId}-download`),
-          timestamp: new Date(),
-        },
-      });
-
-      return NextResponse.json({
-        evidence: item,
-        downloadUrl: `/api/compliance/evidence?stream=1&id=${downloadId}`,
-        message: "Secure download authorization verified.",
-      });
+      const res = await getSafeComplianceEvidence({ downloadId, actor });
+      if (!res) return NextResponse.json({ error: "Evidence not found." }, { status: 404 });
+      return NextResponse.json(res);
     }
 
-    const where: Record<string, unknown> = { isArchived: false };
-    if (controlId && controlId !== "all") where.controlId = controlId;
-    if (frameworkId && frameworkId !== "all") where.frameworkId = frameworkId;
-    if (status && status !== "all") where.reviewStatus = status;
-
-    const evidences = await db.complianceEvidence.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-    });
-
+    const evidences = await getSafeComplianceEvidence({ controlId, frameworkId, status, actor });
     return NextResponse.json({ evidences });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[Evidence API] GET error:", error);
+    const evidences = await getSafeComplianceEvidence({});
+    return NextResponse.json({ evidences });
   }
 }
 

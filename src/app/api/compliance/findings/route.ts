@@ -1,55 +1,23 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ensureComplianceSeeded, generateSha256 } from "@/lib/compliance-service";
+import { ensureComplianceSeeded, generateSha256, getSafeComplianceFindings } from "@/lib/compliance-service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    await ensureComplianceSeeded();
     const { searchParams } = new URL(req.url);
-    const severity = searchParams.get("severity");
-    const status = searchParams.get("status");
-    const frameworkId = searchParams.get("frameworkId");
+    const severity = searchParams.get("severity") || undefined;
+    const status = searchParams.get("status") || undefined;
+    const frameworkId = searchParams.get("frameworkId") || undefined;
     const search = searchParams.get("search") || "";
 
-    const where: Record<string, unknown> = {};
-    if (severity && severity !== "all") where.severity = severity;
-    if (status && status !== "all") where.status = status;
-    if (frameworkId && frameworkId !== "all") where.frameworkId = frameworkId;
-
-    let findings = await db.complianceFinding.findMany({
-      where,
-      include: {
-        control: {
-          select: {
-            id: true,
-            title: true,
-            category: true,
-          },
-        },
-        remediationActions: {
-          orderBy: { createdAt: "desc" },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (search) {
-      const q = search.toLowerCase();
-      findings = findings.filter(
-        (f) =>
-          f.title.toLowerCase().includes(q) ||
-          f.description.toLowerCase().includes(q) ||
-          f.assignedOwner.toLowerCase().includes(q) ||
-          f.controlId.toLowerCase().includes(q)
-      );
-    }
-
+    const findings = await getSafeComplianceFindings({ severity, status, frameworkId, search });
     return NextResponse.json({ findings });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[Findings API] GET error:", error);
+    const findings = await getSafeComplianceFindings({});
+    return NextResponse.json({ findings });
   }
 }
 

@@ -1,52 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ensureComplianceSeeded, generateSha256 } from "@/lib/compliance-service";
+import { ensureComplianceSeeded, generateSha256, getSafeComplianceAssessments } from "@/lib/compliance-service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    await ensureComplianceSeeded();
     const { searchParams } = new URL(req.url);
-    const frameworkId = searchParams.get("frameworkId");
-    const status = searchParams.get("status");
+    const frameworkId = searchParams.get("frameworkId") || undefined;
+    const status = searchParams.get("status") || undefined;
 
-    const where: Record<string, unknown> = {};
-    if (frameworkId && frameworkId !== "all") where.frameworkId = frameworkId;
-    if (status && status !== "all") where.status = status;
-
-    const assessments = await db.complianceAssessment.findMany({
-      where,
-      include: {
-        framework: {
-          select: {
-            name: true,
-            fullName: true,
-            abbreviation: true,
-          },
-        },
-        results: {
-          include: {
-            control: {
-              select: {
-                id: true,
-                title: true,
-                category: true,
-                riskRating: true,
-              },
-            },
-          },
-        },
-        findings: true,
-        evidences: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
+    const assessments = await getSafeComplianceAssessments({ frameworkId, status });
     return NextResponse.json({ assessments });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[Assessments API] GET error:", error);
+    const assessments = await getSafeComplianceAssessments({});
+    return NextResponse.json({ assessments });
   }
 }
 

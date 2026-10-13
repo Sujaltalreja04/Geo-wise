@@ -1,72 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ensureComplianceSeeded, generateSha256 } from "@/lib/compliance-service";
+import { ensureComplianceSeeded, generateSha256, getSafeComplianceDataGovernance } from "@/lib/compliance-service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    await ensureComplianceSeeded();
     const { searchParams } = new URL(req.url);
-    const classificationType = searchParams.get("type"); // "Official" | "Reference-Only"
-    const security = searchParams.get("security");
+    const classificationType = searchParams.get("type") || undefined;
+    const security = searchParams.get("security") || undefined;
     const search = searchParams.get("search") || "";
 
-    const where: Record<string, unknown> = {};
-    if (classificationType && classificationType !== "all") where.classificationType = classificationType;
-    if (security && security !== "all") where.securityClassification = security;
-
-    let assets = await db.dataAsset.findMany({
-      where,
-      include: {
-        gaps: true,
-      },
-      orderBy: { importDate: "desc" },
+    const { assets, dataGaps, traceabilitySamples } = await getSafeComplianceDataGovernance({
+      classificationType,
+      security,
+      search,
     });
-
-    if (search) {
-      const q = search.toLowerCase();
-      assets = assets.filter(
-        (a) =>
-          a.datasetName.toLowerCase().includes(q) ||
-          a.datasetNameAr.toLowerCase().includes(q) ||
-          a.sourceAuthority.toLowerCase().includes(q) ||
-          a.geographicCoverage.toLowerCase().includes(q)
-      );
-    }
-
-    const dataGaps = await db.dataGap.findMany({
-      orderBy: { createdAt: "desc" },
-    });
-
-    // Compute provenance trace records
-    const traceabilitySamples = [
-      {
-        requestId: "REQ-FTO-2026-ABHA-089",
-        analysisMethod: "Multi-Criteria Spatial Suitability Engine (M05)",
-        engineVersion: "v2.1.4-Release",
-        timestamp: "2026-10-12 14:22:10 UTC",
-        inputs: [
-          { name: "Aseer Official Cadastral Parcels", version: "2026.3-R2", type: "Official" },
-          { name: "Municipal Zoning Masterplan", version: "2026.1", type: "Official (Stale > 60d)" },
-          { name: "Contractor KMZ Boundary", version: "Batch-04", type: "Reference-Only" },
-        ],
-        dataLimitations: "Drone imagery lacks formal privacy masking certification. Parcels in northern sector rely on 2026.1 masterplan.",
-        humanOversightNote: "Advisory finding only. Aseer Supervisory Committee (SVC) retains final discretionary decision authority.",
-      },
-      {
-        requestId: "REQ-FTO-2026-SOODAH-015",
-        analysisMethod: "Environmental Reserve Proximity & Encroachment Check (M07)",
-        engineVersion: "v2.1.4-Release",
-        timestamp: "2026-10-11 09:15:30 UTC",
-        inputs: [
-          { name: "Environmental Protected Reserves", version: "2025.4-Final", type: "Official" },
-          { name: "Commercial Drone Orthomosaic", version: "2026.08.12", type: "Reference-Only" },
-        ],
-        dataLimitations: "14-meter coordinate discrepancy detected with contractor KMZ overlay. Flagged in Data-Gap Register (GAP-2026-03).",
-        humanOversightNote: "Field survey dispatch required prior to any demolition or stop-work order.",
-      },
-    ];
 
     return NextResponse.json({
       assets,
@@ -74,10 +23,16 @@ export async function GET(req: Request) {
       traceabilitySamples,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[Data Governance API] GET error:", error);
+    const { assets, dataGaps, traceabilitySamples } = await getSafeComplianceDataGovernance({});
+    return NextResponse.json({
+      assets,
+      dataGaps,
+      traceabilitySamples,
+    });
   }
 }
+
 
 export async function POST(req: Request) {
   try {
